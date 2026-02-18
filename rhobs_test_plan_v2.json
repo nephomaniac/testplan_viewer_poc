@@ -1,0 +1,629 @@
+{
+  "metadata": {
+    "document_title": "RHOBS Synthetic Monitoring - Interactive Learning Guide",
+    "version": "2.0",
+    "date": "2026-02-18",
+    "status": "Draft",
+    "epic": "SREP-3109",
+    "purpose": "Hands-on learning path for understanding RHOBS synthetic monitoring through practical testing",
+    "target_audience": "New engineers onboarding to RHOBS/ROSA",
+    "estimated_total_time": "2-3 hours",
+    "learning_objectives": [
+      "Understand RHOBS architecture and data flows",
+      "Learn ROSA HCP cluster management",
+      "Master observability debugging techniques",
+      "Gain hands-on experience with monitoring tools"
+    ]
+  },
+  "learning_path": {
+    "description": "Recommended sequence for new developers to learn the system",
+    "sequence": [
+      "test_1_cluster_creation",
+      "test_2_logs_flow",
+      "test_3_synthetic_monitoring"
+    ],
+    "alternative_paths": {
+      "experienced_with_kubernetes": [
+        "test_1_cluster_creation",
+        "test_3_synthetic_monitoring",
+        "test_2_logs_flow"
+      ],
+      "debugging_focused": [
+        "test_1_cluster_creation",
+        "test_2_logs_flow",
+        "test_3_synthetic_monitoring"
+      ]
+    }
+  },
+  "prerequisites": {
+    "required_knowledge": [
+      {
+        "topic": "Kubernetes Basics",
+        "level": "beginner",
+        "resources": [
+          "https://kubernetes.io/docs/tutorials/kubernetes-basics/",
+          "https://docs.openshift.com/container-platform/latest/welcome/index.html"
+        ]
+      },
+      {
+        "topic": "Command Line (bash)",
+        "level": "beginner",
+        "resources": []
+      },
+      {
+        "topic": "Observability Concepts",
+        "level": "optional",
+        "resources": [
+          "https://opentelemetry.io/docs/concepts/observability-primer/"
+        ]
+      }
+    ],
+    "required_access": [
+      {
+        "name": "OCM Access",
+        "purpose": "Create ROSA HCP clusters",
+        "how_to_get": "Request access via #forum-osd-sre",
+        "verification": "ocm whoami"
+      },
+      {
+        "name": "RHOBS API Access",
+        "purpose": "Query observability data",
+        "how_to_get": "Get token from Vault (see vault.md)",
+        "verification": "curl -H \"Authorization: Bearer $RHOBS_TOKEN\" $RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes"
+      }
+    ],
+    "environment_setup": {
+      "variables": {
+        "OCM_URL": "https://api.stage.openshift.com",
+        "RHOBS_API_URL": "https://observatorium-api.stage.openshift.com",
+        "TEST_SECTOR": "srep-dev",
+        "TEST_REGION": "us-east-1"
+      },
+      "tools": [
+        {"name": "ocm", "install": "brew install ocm", "verify": "ocm version"},
+        {"name": "oc", "install": "brew install openshift-cli", "verify": "oc version"},
+        {"name": "jq", "install": "brew install jq", "verify": "jq --version"}
+      ]
+    }
+  },
+  "concepts": {
+    "rosa_hcp": {
+      "title": "ROSA HCP (Hosted Control Plane)",
+      "description": "Red Hat OpenShift Service on AWS with hosted control plane. Control plane runs on a management cluster, worker nodes in customer AWS account.",
+      "why_it_matters": "Understanding HCP architecture is critical for debugging observability flows.",
+      "diagram_url": null,
+      "related_tests": ["test_1_cluster_creation", "test_3_synthetic_monitoring"]
+    },
+    "remote_write": {
+      "title": "Prometheus Remote Write",
+      "description": "Protocol for forwarding metrics from Prometheus to remote storage (RHOBS/Thanos).",
+      "why_it_matters": "Metrics won't appear in RHOBS without properly configured remote write.",
+      "diagram_url": null,
+      "related_tests": ["test_1_cluster_creation"]
+    },
+    "synthetic_monitoring": {
+      "title": "Synthetic Monitoring",
+      "description": "External probing of services to validate availability independent of internal monitoring.",
+      "why_it_matters": "Provides early detection of customer-facing outages.",
+      "diagram_url": null,
+      "related_tests": ["test_3_synthetic_monitoring"]
+    }
+  },
+  "testcases": {
+    "test_1_cluster_creation": {
+      "metadata": {
+        "id": "test_1",
+        "name": "test_1_cluster_creation",
+        "title": "Create Your First HCP Cluster",
+        "category": "infrastructure",
+        "difficulty": "beginner",
+        "estimated_time": "15-20 minutes",
+        "hands_on_percentage": 90
+      },
+      "learning": {
+        "objectives": [
+          "Learn ROSA HCP cluster creation workflow",
+          "Understand provision shards and sectors",
+          "Practice using OCM CLI",
+          "Learn how to monitor cluster provisioning"
+        ],
+        "concepts_covered": ["rosa_hcp", "provision_shards", "hosted_clusters"],
+        "skills_gained": [
+          "ROSA cluster management",
+          "OCM CLI usage",
+          "Cluster lifecycle understanding"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Forgetting to set --properties=provision-shard-id",
+            "consequence": "Cluster created in wrong sector",
+            "how_to_avoid": "Always verify TEST_SECTOR is set before creation"
+          },
+          {
+            "mistake": "Not waiting for cluster to be fully ready",
+            "consequence": "Subsequent tests fail",
+            "how_to_avoid": "Use 'rosa logs install -f' to watch until completion"
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Create a ROSA HCP cluster that serves as the foundation for learning observability data flows",
+        "duration": "15-20 minutes",
+        "dependencies": [],
+        "prerequisites": [
+          "OCM access configured",
+          "Environment variables set"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Generate Unique Cluster Name",
+            "learning_note": "Using timestamps ensures unique names and helps track when clusters were created for cleanup",
+            "command": "export TEST_CLUSTER_NAME=\"metrics-test-$(date +%s)\"\necho \"Creating cluster: $TEST_CLUSTER_NAME\"",
+            "expected_output": "Creating cluster: metrics-test-1739901234",
+            "why_this_step": "Prevents naming conflicts and makes cluster identification easier",
+            "common_errors": []
+          },
+          {
+            "step_number": 2,
+            "title": "Create ROSA HCP Cluster",
+            "learning_note": "The --hosted-cp flag creates a Hosted Control Plane cluster. Notice how the control plane components won't run in your AWS account.",
+            "command": "rosa create cluster \\\n  --cluster-name=$TEST_CLUSTER_NAME \\\n  --sts \\\n  --mode=auto \\\n  --hosted-cp \\\n  --properties=provision-shard-id:srep-dev \\\n  --region=$TEST_REGION \\\n  --yes",
+            "expected_output": "I: Creating cluster 'metrics-test-XXXXXXX'\nI: To view a list of clusters and their status, run 'rosa list clusters'",
+            "why_this_step": "Initiates cluster creation. The provision-shard-id:srep-dev ensures the cluster is created in the test environment.",
+            "common_errors": [
+              {
+                "error": "Insufficient capacity in sector",
+                "solution": "Run 'ocm list clusters --parameter search=\"sector is srep-dev\"' and delete old test clusters",
+                "learn_more": "Sectors have quota limits to prevent resource exhaustion"
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Monitor Cluster Installation",
+            "learning_note": "Watch the installation logs to understand the provisioning process. Notice the different phases: DNS, control plane, workers.",
+            "command": "rosa logs install --cluster $TEST_CLUSTER_NAME -f",
+            "expected_output": "Shows real-time installation progress ending with 'cluster is ready'",
+            "why_this_step": "Learn what happens during cluster provisioning and how to diagnose installation failures",
+            "common_errors": [
+              {
+                "error": "Installation stuck at 'Waiting for control plane'",
+                "solution": "Usually resolves in 10-15 min. If stuck >30 min, check AWS service status",
+                "learn_more": "Control plane provisioning involves creating load balancers, security groups in AWS"
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Capture Cluster Metadata",
+            "learning_note": "The cluster ID is used throughout RHOBS for labeling metrics and logs. The API URL is what synthetic monitoring will probe.",
+            "command": "export CLUSTER_ID=$(rosa describe cluster -c $TEST_CLUSTER_NAME -o json | jq -r '.id')\nexport CLUSTER_API_URL=$(rosa describe cluster -c $TEST_CLUSTER_NAME -o json | jq -r '.api.url')\n\necho \"Cluster ID: $CLUSTER_ID\"\necho \"API URL: $CLUSTER_API_URL\"",
+            "expected_output": "Cluster ID: abc123xyz\nAPI URL: https://api.abc123xyz.p1.openshiftapps.com:6443",
+            "why_this_step": "These values are essential for querying observability data in later tests",
+            "common_errors": []
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Cluster state shows 'ready'",
+            "CLUSTER_ID variable is set and non-empty",
+            "CLUSTER_API_URL is accessible (returns 403 without auth is OK)"
+          ],
+          "how_to_verify": "Run: rosa describe cluster -c $TEST_CLUSTER_NAME | grep State",
+          "what_success_means": "You've successfully provisioned infrastructure that will generate observability data",
+          "what_failure_means": "Cannot proceed with learning observability flows without a working cluster"
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [
+          {
+            "symptom": "Error: 'provision shard not found'",
+            "cause": "Typo in sector name or sector doesn't exist",
+            "debug_steps": [
+              "Verify: echo $TEST_SECTOR",
+              "List available: ocm get /api/osd_fleet_mgmt/v1/management_clusters"
+            ],
+            "fix": "Correct TEST_SECTOR variable",
+            "prevention": "Always verify environment variables before cluster creation"
+          }
+        ],
+        "getting_help": [
+          "Slack: #forum-osd-sre for cluster creation issues",
+          "Docs: https://access.redhat.com/documentation/en-us/red_hat_openshift_service_on_aws"
+        ]
+      },
+      "next_steps": {
+        "on_success": "Proceed to Test 2 (Logs Flow) to learn how application and audit logs flow to Loki",
+        "bonus_exploration": [
+          "Login to the cluster: rosa create admin -c $TEST_CLUSTER_NAME",
+          "Explore the HostedCluster CR on the management cluster",
+          "Check cluster monitoring stack: oc get pods -n openshift-monitoring"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "ROSA HCP Architecture: https://docs.openshift.com/rosa/architecture/rosa-hcp.html"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_2_logs_flow": {
+      "metadata": {
+        "id": "test_2",
+        "name": "test_2_logs_flow",
+        "title": "Trace Logs from Application to Loki",
+        "category": "observability",
+        "difficulty": "intermediate",
+        "estimated_time": "30-40 minutes",
+        "hands_on_percentage": 85
+      },
+      "learning": {
+        "objectives": [
+          "Understand the log forwarding pipeline",
+          "Learn LogQL query language basics",
+          "Master log label usage for filtering",
+          "Practice debugging log forwarding issues"
+        ],
+        "concepts_covered": ["log_forwarding", "loki", "logql", "cluster_logging"],
+        "skills_gained": [
+          "LogQL querying",
+          "Log pipeline debugging",
+          "Label-based filtering",
+          "Grafana log exploration"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Querying Loki immediately after deploying workload",
+            "consequence": "No results, incorrectly assume log forwarding is broken",
+            "how_to_avoid": "Wait 5-10 minutes for logs to propagate. Check local logs first with 'oc logs'"
+          },
+          {
+            "mistake": "Forgetting to escape special characters in LogQL",
+            "consequence": "Query syntax errors",
+            "how_to_avoid": "Use double quotes around literal strings, escape $ signs"
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Deploy a log-generating workload and trace its logs through the forwarding pipeline to Loki, learning how to query and filter logs",
+        "duration": "30-40 minutes",
+        "dependencies": ["test_1_cluster_creation"],
+        "prerequisites": [
+          "Cluster from Test 1 is ready",
+          "CLUSTER_ID environment variable set",
+          "Loki API credentials configured"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Create a Unique Log Marker",
+            "learning_note": "This marker makes your logs easily searchable in Loki. In production, you'd use structured logging with consistent fields.",
+            "command": "export LOG_MARKER=\"e2e-test-$(date +%s)-$(uuidgen | cut -d- -f1)\"\necho \"Log marker: $LOG_MARKER\"",
+            "expected_output": "Log marker: e2e-test-1739901234-a1b2c3d4",
+            "why_this_step": "Demonstrates how to make logs searchable and traceable",
+            "common_errors": []
+          },
+          {
+            "step_number": 2,
+            "title": "Deploy Log-Generating Pod",
+            "learning_note": "This simple pod generates INFO, WARN, and ERROR logs. Notice how container logs go to stdout - this is the standard pattern for containerized apps.",
+            "command": "cat <<EOF | oc apply -f -\napiVersion: v1\nkind: Pod\nmetadata:\n  name: log-generator\n  namespace: default\n  labels:\n    app: log-generator\nspec:\n  containers:\n  - name: logger\n    image: busybox:latest\n    command: [\"/bin/sh\", \"-c\"]\n    args:\n      - |\n        while true; do\n          echo \"INFO: $LOG_MARKER - Test log entry \\$(date)\"\n          echo \"WARN: $LOG_MARKER - Warning message \\$(date)\"\n          echo \"ERROR: $LOG_MARKER - Error message \\$(date)\"\n          sleep 10\n        done\nEOF",
+            "expected_output": "pod/log-generator created",
+            "why_this_step": "Learn the standard pattern for containerized application logging",
+            "common_errors": []
+          },
+          {
+            "step_number": 3,
+            "title": "Verify Local Logs",
+            "learning_note": "Always verify logs locally before checking remote systems. This confirms the application is actually generating logs.",
+            "command": "oc wait --for=condition=Ready pod/log-generator -n default --timeout=60s\noc logs -n default log-generator --tail=10",
+            "expected_output": "Shows recent log lines with your LOG_MARKER",
+            "why_this_step": "Teaches the debugging principle: verify data at the source before checking downstream systems",
+            "common_errors": []
+          },
+          {
+            "step_number": 4,
+            "title": "Wait for Log Propagation",
+            "learning_note": "Logs flow: Container stdout → Node log file → fluentd/vector → Loki. This typically takes 2-5 minutes.",
+            "command": "echo \"Waiting 5 minutes for logs to reach Loki...\"\necho \"While waiting, read about the log pipeline in the concepts section\"\nsleep 300",
+            "expected_output": "5 minute countdown",
+            "why_this_step": "Learn realistic expectations for observability data latency",
+            "common_errors": []
+          },
+          {
+            "step_number": 5,
+            "title": "Query Application Logs from Loki",
+            "learning_note": "LogQL syntax: {label_filters} |= \"text search\". Labels are indexed, text searches are not. Use labels for filtering when possible.",
+            "command": "curl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode 'query={cluster_id=\"'$CLUSTER_ID'\",namespace=\"default\"} |= \"'$LOG_MARKER'\"' \\\n  --data-urlencode \"limit=10\" \\\n  \"$LOKI_API_URL/loki/api/v1/query_range\" | jq -r '.data.result[0].values[][1]'",
+            "expected_output": "Shows your log lines from Loki",
+            "why_this_step": "Learn LogQL basics and how to verify logs reached Loki",
+            "common_errors": [
+              {
+                "error": "No results returned",
+                "solution": "1. Check local logs still generating 2. Verify LOKI_TOKEN is valid 3. Wait longer (up to 10 min) 4. Check log forwarding: oc get clusterlogging -A",
+                "learn_more": "Log forwarding requires ClusterLogging and ClusterLogForwarder CRs"
+              }
+            ]
+          },
+          {
+            "step_number": 6,
+            "title": "Explore Log Labels",
+            "learning_note": "Labels are how you filter logs in Loki. Key labels: cluster_id, namespace, pod, container. These are automatically added by the log forwarder.",
+            "command": "curl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode 'query={cluster_id=\"'$CLUSTER_ID'\"} |= \"'$LOG_MARKER'\"' \\\n  --data-urlencode \"limit=1\" \\\n  \"$LOKI_API_URL/loki/api/v1/query_range\" | jq '.data.result[0].stream'",
+            "expected_output": "Shows all labels on your log stream",
+            "why_this_step": "Understanding labels is critical for efficient log queries",
+            "common_errors": []
+          },
+          {
+            "step_number": 7,
+            "title": "Query Logs in Grafana",
+            "learning_note": "Grafana Explore provides a UI for building LogQL queries. Use it to learn query syntax, then use API for automation.",
+            "command": "echo \"Open Grafana at: $GRAFANA_URL\"\necho \"Navigate to: Explore → Select Loki datasource\"\necho \"Query: {cluster_id=\\\"$CLUSTER_ID\\\",namespace=\\\"default\\\"} |= \\\"$LOG_MARKER\\\"\"\necho \"\"\necho \"Try these filters:\"\necho \"- Filter by ERROR: {cluster_id=\\\"$CLUSTER_ID\\\"} |= \\\"$LOG_MARKER\\\" |= \\\"ERROR\\\"\"\necho \"- Count logs: count_over_time({cluster_id=\\\"$CLUSTER_ID\\\"} |= \\\"$LOG_MARKER\\\" [5m])\"",
+            "expected_output": "Instructions for Grafana exploration",
+            "why_this_step": "Learn the tool SREs use daily for log analysis",
+            "common_errors": []
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Logs visible locally via 'oc logs'",
+            "Logs queryable in Loki API",
+            "Logs appear in Grafana Explore",
+            "Log labels include cluster_id, namespace, pod, container"
+          ],
+          "how_to_verify": "Run step 5 query and verify results",
+          "what_success_means": "You understand the complete log pipeline and can query logs for troubleshooting",
+          "what_failure_means": "Log forwarding may be misconfigured, preventing you from debugging cluster issues"
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [
+          {
+            "symptom": "No logs in Loki after 10 minutes",
+            "cause": "Log forwarding not configured or broken",
+            "debug_steps": [
+              "Check ClusterLogging exists: oc get clusterlogging -A",
+              "Check logging operator: oc get pods -n openshift-logging",
+              "Check forwarder config: oc get clusterlogforwarder -A -o yaml"
+            ],
+            "fix": "For HCP clusters, log forwarding should be automatic. Contact team if missing.",
+            "prevention": "Always verify log forwarding is configured before relying on Loki"
+          }
+        ],
+        "getting_help": [
+          "Slack: #forum-logging for log forwarding issues",
+          "Docs: LogQL syntax https://grafana.com/docs/loki/latest/logql/"
+        ]
+      },
+      "next_steps": {
+        "on_success": "Proceed to Test 3 (Synthetic Monitoring) to learn how external probes validate cluster availability",
+        "bonus_exploration": [
+          "Query audit logs: {cluster_id=\"$CLUSTER_ID\",log_type=\"audit\"}",
+          "Try LogQL aggregations: rate({cluster_id=\"$CLUSTER_ID\"}[5m])",
+          "Explore other namespaces: {cluster_id=\"$CLUSTER_ID\",namespace=\"openshift-monitoring\"}"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "LogQL Reference: https://grafana.com/docs/loki/latest/logql/",
+          "OpenShift Logging: https://docs.openshift.com/container-platform/latest/logging/cluster-logging.html"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_3_synthetic_monitoring": {
+      "metadata": {
+        "id": "test_3",
+        "name": "test_3_synthetic_monitoring",
+        "title": "Watch Synthetic Monitoring Detect Your Cluster",
+        "category": "observability",
+        "difficulty": "advanced",
+        "estimated_time": "45-60 minutes",
+        "hands_on_percentage": 75
+      },
+      "learning": {
+        "objectives": [
+          "Understand the complete synthetic monitoring architecture",
+          "Learn how route-monitor-operator auto-discovers clusters",
+          "Master debugging distributed monitoring systems",
+          "Practice reading component logs to trace data flows"
+        ],
+        "concepts_covered": ["synthetic_monitoring", "route_monitor_operator", "blackbox_exporter", "probe_lifecycle"],
+        "skills_gained": [
+          "Multi-cluster troubleshooting",
+          "Understanding probe-based monitoring",
+          "Reading operator logs",
+          "API-driven configuration"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Expecting instant probe registration",
+            "consequence": "Think RMO is broken, when it's just slow",
+            "how_to_avoid": "RMO polls HostedClusters every 60s. Wait at least 2-3 minutes after cluster creation."
+          },
+          {
+            "mistake": "Confusing probe_success=0 with broken monitoring",
+            "consequence": "Debug monitoring instead of cluster",
+            "how_to_avoid": "probe_success=0 means cluster API is unreachable, not that monitoring is broken"
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Follow your cluster through the complete synthetic monitoring lifecycle: detection → registration → execution → metrics → cleanup",
+        "duration": "45-60 minutes",
+        "dependencies": ["test_1_cluster_creation"],
+        "prerequisites": [
+          "Cluster from Test 1 is ready",
+          "Access to Management Cluster",
+          "Access to RHOBS Cell cluster",
+          "CLUSTER_ID environment variable set"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Login to Management Cluster",
+            "learning_note": "The Management Cluster hosts the control planes for HCP clusters. route-monitor-operator runs here and watches HostedCluster CRs.",
+            "command": "# Get MC for srep-dev sector\nexport MC_CLUSTER_ID=$(ocm get /api/osd_fleet_mgmt/v1/management_clusters | jq -r '.items[] | select(.sector == \"srep-dev\") | .cluster_management_reference.cluster_id' | head -1)\n\necho \"Management Cluster: $MC_CLUSTER_ID\"\nocm backplane login $MC_CLUSTER_ID\noc whoami",
+            "expected_output": "Successfully logged in to MC",
+            "why_this_step": "Learn the HCP architecture: tenant clusters have CRs on MCs",
+            "common_errors": []
+          },
+          {
+            "step_number": 2,
+            "title": "Find route-monitor-operator",
+            "learning_note": "RMO is the component that discovers new clusters and registers probes. Understanding where it runs is key to debugging.",
+            "command": "export RMO_NS=$(oc get deployment -A | grep route-monitor-operator | awk '{print $1}')\necho \"RMO Namespace: $RMO_NS\"\noc get deployment -n $RMO_NS route-monitor-operator",
+            "expected_output": "Shows RMO deployment with READY status",
+            "why_this_step": "Learn how to locate operators in a multi-tenant cluster",
+            "common_errors": []
+          },
+          {
+            "step_number": 3,
+            "title": "Verify RMO Configuration",
+            "learning_note": "RMO needs to know the RHOBS API URL to register probes. This is configured via environment variable.",
+            "command": "oc get deployment -n $RMO_NS route-monitor-operator -o yaml | grep -A3 'probe-api-url'",
+            "expected_output": "Shows probe-api-url pointing to RHOBS synthetics API",
+            "why_this_step": "Learn how operators are configured and how to verify configuration",
+            "common_errors": [
+              {
+                "error": "probe-api-url not found",
+                "solution": "RMO not configured for this MC. Check app-interface configuration.",
+                "learn_more": "Configuration is managed via app-interface GitOps"
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Find Your Cluster's HostedCluster CR",
+            "learning_note": "HostedCluster CRs represent tenant clusters on the MC. RMO watches these CRs to discover new clusters.",
+            "command": "oc get hostedclusters -A | grep $TEST_CLUSTER_NAME\nexport HC_NAMESPACE=$(oc get hostedclusters -A | grep $TEST_CLUSTER_NAME | awk '{print $1}')\noc get hostedcluster -n $HC_NAMESPACE $TEST_CLUSTER_NAME -o yaml | head -50",
+            "expected_output": "Shows HostedCluster CR with API endpoint in status",
+            "why_this_step": "Learn how HCP architecture represents tenant clusters",
+            "common_errors": []
+          },
+          {
+            "step_number": 5,
+            "title": "Watch RMO Logs for Discovery",
+            "learning_note": "RMO polls for HostedClusters periodically. Watch the logs to see it discover your cluster.",
+            "command": "echo \"Watching RMO logs for your cluster...\"\noc logs -n $RMO_NS deployment/route-monitor-operator --tail=20 | grep -i \"$TEST_CLUSTER_NAME\\|hostedcluster\"\necho \"\"\necho \"If nothing appears, RMO may not have polled yet. Check recent logs:\"\noc logs -n $RMO_NS deployment/route-monitor-operator --tail=50",
+            "expected_output": "Logs showing HostedCluster detection",
+            "why_this_step": "Learn to read operator logs to understand what the operator is doing",
+            "common_errors": []
+          },
+          {
+            "step_number": 6,
+            "title": "Query RHOBS API for Registered Probe",
+            "learning_note": "After discovering your cluster, RMO calls the RHOBS API to register a probe. The probe config is stored as a ConfigMap.",
+            "command": "echo \"Waiting 2 minutes for RMO to register probe...\"\nsleep 120\n\ncurl -s -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes\" | \\\n  jq -r '.probes[] | select(.labels.cluster_id == \"'$CLUSTER_ID'\")' | head -30\n\nexport PROBE_ID=$(curl -s -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes\" | \\\n  jq -r '.probes[] | select(.labels.cluster_id == \"'$CLUSTER_ID'\") | .id')\n\necho \"\"\necho \"Probe ID: $PROBE_ID\"",
+            "expected_output": "Shows probe object with your cluster_id",
+            "why_this_step": "Learn how probe configuration is stored and accessed",
+            "common_errors": [
+              {
+                "error": "Probe not found",
+                "solution": "Wait longer (up to 5 min) or check RMO logs for errors",
+                "learn_more": "RMO may retry on API errors"
+              }
+            ]
+          },
+          {
+            "step_number": 7,
+            "title": "Login to RHOBS Cell and Find Agent",
+            "learning_note": "The rhobs-synthetics-agent runs on RHOBS cell clusters. It polls the API for probes and creates Probe CRs for blackbox-exporter.",
+            "command": "# Get RHOBS cell cluster ID from team or app-interface\necho \"Ask team for RHOBS cell cluster ID for your region: $TEST_REGION\"\necho \"Or check app-interface for synthetics-agent deployment\"\necho \"\"\necho \"export RHOBS_CLUSTER_ID=<rhobs-cell-cluster-id>\"\necho \"ocm backplane login \\$RHOBS_CLUSTER_ID\"",
+            "expected_output": "Instructions to login to RHOBS cell",
+            "why_this_step": "Learn the distributed architecture of synthetic monitoring",
+            "common_errors": []
+          },
+          {
+            "step_number": 8,
+            "title": "Watch Agent Create Probe CR",
+            "learning_note": "The agent polls the API every 30-60s. When it finds your probe, it creates a Probe CR that blackbox-exporter consumes.",
+            "command": "export AGENT_NS=$(oc get deployment -A | grep synthetics-agent | awk '{print $1}')\necho \"Agent namespace: $AGENT_NS\"\n\necho \"Watching agent logs...\"\noc logs -n $AGENT_NS deployment/rhobs-synthetics-agent --tail=20 | grep -i probe\n\necho \"\"\necho \"Waiting 60s for agent to poll and create Probe CR...\"\nsleep 60\n\noc get probes -n $AGENT_NS | grep $CLUSTER_ID",
+            "expected_output": "Shows Probe CR for your cluster",
+            "why_this_step": "Learn how configuration flows from API to execution",
+            "common_errors": []
+          },
+          {
+            "step_number": 9,
+            "title": "Verify Blackbox Exporter Execution",
+            "learning_note": "Blackbox exporter reads Probe CRs and executes HTTP probes. It exposes probe_success, probe_duration_seconds metrics.",
+            "command": "oc logs -n $AGENT_NS deployment/synthetics-blackbox-prober --tail=50 | grep -i \"$CLUSTER_API_URL\\|probe\"\n\necho \"\"\necho \"Querying Prometheus for probe metrics...\"\noc exec -n $AGENT_NS prometheus-rhobs-synthetics-0 -- \\\n  promtool query instant http://localhost:9090 \\\n  'probe_success{cluster_id=\"'$CLUSTER_ID'\"}'",
+            "expected_output": "Shows probe_success metric with value 1 or 0",
+            "why_this_step": "Learn how to verify probe execution and interpret results",
+            "common_errors": []
+          },
+          {
+            "step_number": 10,
+            "title": "Query Probe Metrics in RHOBS",
+            "learning_note": "Metrics are remote-written from RHOBS cell Prometheus to Thanos. This typically takes 2-5 minutes.",
+            "command": "echo \"Waiting 5 minutes for metrics to reach RHOBS/Thanos...\"\nsleep 300\n\ncurl -G -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  --data-urlencode 'query=probe_success{cluster_id=\"'$CLUSTER_ID'\"}' \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/api/v1/query\" | \\\n  jq '.data.result[]'",
+            "expected_output": "Shows probe_success metric with labels and value",
+            "why_this_step": "Complete the learning journey: data flows from probe → Prometheus → Thanos → RHOBS API",
+            "common_errors": []
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "HostedCluster CR found on MC",
+            "Probe registered in RHOBS API",
+            "Probe CR created on RHOBS cell",
+            "probe_success metric visible in RHOBS",
+            "Understand the complete data flow"
+          ],
+          "how_to_verify": "Run step 10 and verify probe_success metric exists",
+          "what_success_means": "You can now debug the entire synthetic monitoring stack and understand how clusters are automatically monitored",
+          "what_failure_means": "Gaps in understanding the distributed monitoring architecture"
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [
+          {
+            "symptom": "probe_success = 0 (probe failing)",
+            "cause": "Cluster API not reachable from RHOBS cell",
+            "debug_steps": [
+              "Test from RHOBS cell: oc debug node/<node> -- curl -v https://<api-url>:6443/readyz",
+              "Check cluster API is healthy: rosa describe cluster -c $TEST_CLUSTER_NAME",
+              "Check blackbox logs for detailed error"
+            ],
+            "fix": "Usually network/firewall issue. Check VPC peering and security groups.",
+            "prevention": "Verify network connectivity before deploying monitoring"
+          }
+        ],
+        "getting_help": [
+          "Slack: #forum-rhobs-core for synthetic monitoring issues",
+          "Code: https://github.com/openshift/route-monitor-operator"
+        ]
+      },
+      "next_steps": {
+        "on_success": "Congratulations! You've completed the RHOBS learning path. You now understand metrics, logs, and synthetic monitoring.",
+        "bonus_exploration": [
+          "Delete the cluster and watch probe cleanup: rosa delete cluster -c $TEST_CLUSTER_NAME --yes",
+          "Explore probe history in Grafana",
+          "Read the RMO code to understand the reconciliation logic"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "Synthetic Monitoring Design: https://github.com/openshift/enhancements/blob/master/enhancements/monitoring/synthetic-monitoring.md"
+        ],
+        "related_code": [
+          "route-monitor-operator: https://github.com/openshift/route-monitor-operator"
+        ],
+        "sops": []
+      }
+    }
+  },
+  "progress_tracking": {
+    "description": "Track your learning progress through the test plan",
+    "local_storage_key": "rhobs_testplan_progress",
+    "tracked_items": [
+      "steps_completed",
+      "concepts_understood",
+      "tests_passed",
+      "bonus_explorations_completed"
+    ]
+  }
+}

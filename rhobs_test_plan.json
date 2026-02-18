@@ -1,0 +1,985 @@
+{
+  "metadata": {
+    "document_title": "RHOBS Synthetic Monitoring - Manual Test Plan",
+    "version": "1.0",
+    "date": "2026-02-17",
+    "status": "Draft - Needs Team Validation",
+    "epic": {
+      "key": "SREP-3109",
+      "url": "https://issues.redhat.com/browse/SREP-3109"
+    },
+    "authors": [
+      "Trevor Nierman",
+      "Claude"
+    ],
+    "purpose": [
+      "Specification for what 'working' looks like",
+      "Foundation for automated test development",
+      "Validation procedure for new deployments",
+      "Troubleshooting reference"
+    ],
+    "system_under_test": "RHOBS synthetic monitoring stack",
+    "test_flows": [
+      "Metrics Flow: HCP Cluster → RHOBS → Thanos → Grafana",
+      "Logs Flow: HCP Cluster → Loki → Grafana",
+      "Synthetics Flow: RMO → API → Agent → Blackbox → Thanos → Grafana"
+    ],
+    "documentation_references": [
+      {
+        "title": "RMO README",
+        "path": "route-monitor-operator/README.md",
+        "description": "Route Monitor Operator documentation"
+      },
+      {
+        "title": "Synthetics API README",
+        "path": "rhobs-synthetics-api/README.md",
+        "description": "RHOBS Synthetics API documentation"
+      },
+      {
+        "title": "Synthetics Agent README",
+        "path": "rhobs-synthetics-agent/README.md",
+        "description": "RHOBS Synthetics Agent documentation"
+      }
+    ],
+    "support_channels": [
+      {
+        "type": "slack",
+        "channel": "#forum-rhobs-core",
+        "description": "Primary support channel for RHOBS questions"
+      },
+      {
+        "type": "email",
+        "address": "rhobs-team@redhat.com",
+        "description": "RHOBS team email"
+      },
+      {
+        "type": "jira",
+        "query": "project = SREP AND text ~ \"synthetics OR rhobs\"",
+        "description": "Search for existing issues"
+      }
+    ]
+  },
+  "prerequisites": {
+    "required_access": [
+      {
+        "name": "OCM (OpenShift Cluster Manager) Access",
+        "purpose": "Create ROSA HCP clusters in stage environment",
+        "login_command": "ocm login --url=https://api.stage.openshift.com",
+        "verify_command": "ocm whoami",
+        "permissions": [
+          "Ability to create ROSA HCP clusters",
+          "Access to srep-dev sector/provision shard"
+        ]
+      },
+      {
+        "name": "Kubernetes Access (Management Cluster)",
+        "purpose": "Verify route-monitor-operator behavior, check HostedCluster CRs",
+        "login_command": "ocm backplane login <mc-cluster-id>",
+        "verify_command": "oc whoami && oc get hostedclusters -A",
+        "permissions": [
+          "Read access to HostedCluster CRs",
+          "Read access to route-monitor-operator namespace",
+          "Read access to probe-related resources"
+        ]
+      },
+      {
+        "name": "RHOBS API Access",
+        "purpose": "Query probe registrations, verify API integration",
+        "endpoint": "https://observatorium-api-<region>.stage.openshift.com",
+        "auth_source": "Vault or team lead",
+        "test_command": "curl -H \"Authorization: Bearer $RHOBS_TOKEN\" \"https://observatorium-api.stage.openshift.com/api/metrics/v1/<tenant>/probes\""
+      },
+      {
+        "name": "Grafana Access",
+        "purpose": "Verify metrics are queryable and visible",
+        "url": "https://grafana.stage.openshift.com",
+        "auth_type": "SSO or token-based"
+      },
+      {
+        "name": "Loki Access",
+        "purpose": "Query logs directly via API",
+        "auth_source": "Team (same token as RHOBS typically works)",
+        "test_command": "curl -H \"Authorization: Bearer $LOKI_TOKEN\" \"https://loki.stage.openshift.com/loki/api/v1/query?query={cluster_id=\\\"test\\\"}\""
+      }
+    ],
+    "required_tools": {
+      "mac": [
+        {
+          "name": "ocm",
+          "install": "brew install ocm",
+          "verify": "ocm version"
+        },
+        {
+          "name": "openshift-cli",
+          "install": "brew install openshift-cli",
+          "verify": "oc version"
+        },
+        {
+          "name": "jq",
+          "install": "brew install jq",
+          "verify": "jq --version"
+        },
+        {
+          "name": "curl",
+          "install": "pre-installed",
+          "verify": "curl --version"
+        }
+      ],
+      "fedora": [
+        {
+          "name": "jq and curl",
+          "install": "sudo dnf install jq curl",
+          "verify": "jq --version && curl --version"
+        },
+        {
+          "name": "oc and ocm",
+          "install": "Use backplane-tools: https://github.com/openshift/backplane-tools/blob/main/README.md",
+          "verify": "oc version && ocm version"
+        }
+      ]
+    },
+    "environment_variables": {
+      "OCM_TOKEN": "$(ocm token)",
+      "OCM_URL": "https://api.stage.openshift.com",
+      "RHOBS_API_URL": "https://observatorium-api.stage.openshift.com",
+      "RHOBS_TENANT": "<your-tenant> # Get from team",
+      "RHOBS_TOKEN": "<token> # Get from Vault",
+      "GRAFANA_URL": "https://grafana.stage.openshift.com",
+      "GRAFANA_TOKEN": "<token> # Or use SSO login",
+      "TEST_SECTOR": "srep-dev",
+      "TEST_REGION": "us-east-1"
+    },
+    "vault_reference": "https://github.com/openshift/ops-sop/blob/master/services/vault.md"
+  },
+  "testcases": {
+    "test_1_cluster_creation": {
+      "id": "test_1",
+      "name": "test_1_cluster_creation",
+      "title": "Create Test HCP Cluster",
+      "objective": "Create a ROSA HCP cluster in the srep-dev sector that will serve as the foundation for metrics, logs, and synthetic monitoring tests",
+      "intention": "This test validates that the test infrastructure can be provisioned correctly. The cluster creation process includes automatic configuration of remote write for metrics and log forwarding to RHOBS. Without a successfully created cluster, no observability data flows can be tested.",
+      "why_it_matters": "Cluster creation is the foundation for all RHOBS testing. It validates that the test sector (srep-dev) has capacity, that the fleet-manager can provision HCP clusters, and that the cluster is properly configured for observability data forwarding. This test also creates the HostedCluster CR on the Management Cluster which triggers the synthetic monitoring probe registration.",
+      "duration": "~10-15 minutes",
+      "dependencies": [],
+      "prerequisites": [
+        "OCM access to stage",
+        "Access to srep-dev sector",
+        "RHOBS/Grafana credentials configured",
+        "Environment variables set"
+      ],
+      "steps": [
+        {
+          "step_id": "1.1.1",
+          "title": "Generate Unique Cluster Name",
+          "command": "export TEST_CLUSTER_NAME=\"metrics-test-$(date +%s)\"\necho \"Creating cluster: $TEST_CLUSTER_NAME\"",
+          "description": "Creates a unique timestamp-based cluster name to avoid conflicts",
+          "expected_result": "Cluster name variable set with timestamp suffix"
+        },
+        {
+          "step_id": "1.1.2",
+          "title": "Create ROSA HCP Cluster in srep-dev Sector",
+          "command": "rosa create cluster \\\n  --cluster-name=$TEST_CLUSTER_NAME \\\n  --sts \\\n  --mode=auto \\\n  --hosted-cp \\\n  --properties=provision-shard-id:srep-dev \\\n  --region=$TEST_REGION \\\n  --yes",
+          "description": "Creates a ROSA HCP cluster targeting the srep-dev sector (dedicated E2E test environment)",
+          "expected_result": "Command succeeds and cluster creation begins",
+          "expected_output": "I: Creating cluster '<cluster-name>'\nI: To view a list of clusters and their status, run 'rosa list clusters'"
+        },
+        {
+          "step_id": "1.1.3",
+          "title": "Wait for Cluster to be Ready",
+          "command": "rosa logs install --cluster $TEST_CLUSTER_NAME -f",
+          "description": "Monitors cluster creation progress by following installation logs. Cluster takes 10-15 minutes to reach 'ready' state.",
+          "expected_result": "Cluster reaches 'ready' state",
+          "alternative_commands": [
+            "watch -n 30 rosa describe cluster -c $TEST_CLUSTER_NAME",
+            "while true; do STATE=$(rosa describe cluster -c $TEST_CLUSTER_NAME -o json | jq -r '.state'); echo \"Cluster state: $STATE\"; if [ \"$STATE\" = \"ready\" ]; then echo \"Cluster is ready!\"; break; fi; sleep 30; done"
+          ]
+        },
+        {
+          "step_id": "1.1.4",
+          "title": "Capture Cluster Details",
+          "command": "export CLUSTER_ID=$(rosa describe cluster -c $TEST_CLUSTER_NAME -o json | jq -r '.id')\nexport CLUSTER_API_URL=$(rosa describe cluster -c $TEST_CLUSTER_NAME -o json | jq -r '.api.url')\n\necho \"Cluster ID: $CLUSTER_ID\"\necho \"API URL: $CLUSTER_API_URL\"\n\ncat > /tmp/test-cluster-details.txt <<EOF\nTest Cluster Details\n--------------------\nName: $TEST_CLUSTER_NAME\nID: $CLUSTER_ID\nAPI URL: $CLUSTER_API_URL\nCreated: $(date)\nEOF",
+          "description": "Extracts and saves cluster metadata (ID and API URL) needed for subsequent tests",
+          "expected_result": "Cluster ID and API URL captured and saved to file"
+        }
+      ],
+      "expected_results": {
+        "success_indicators": [
+          "Cluster created successfully in srep-dev sector",
+          "Cluster reaches 'ready' state",
+          "Cluster ID and API URL obtained",
+          "HostedCluster CR created on Management Cluster"
+        ],
+        "what_success_means": "The test infrastructure is provisioned and ready for observability testing. The cluster's metrics and logs are automatically configured to forward to RHOBS. The HostedCluster CR on the MC will trigger synthetic monitoring probe creation.",
+        "what_failure_means": "Infrastructure provisioning is blocked. This could indicate sector capacity issues, fleet-manager problems, or AWS service issues. No subsequent tests can proceed without a working cluster."
+      },
+      "failure_scenarios": [
+        {
+          "symptom": "Insufficient capacity error",
+          "likely_cause": "Management cluster at quota or sector capacity exhausted",
+          "debugging_steps": [
+            "Check sector capacity: ocm list provision-shards | grep $TEST_SECTOR",
+            "List existing clusters in sector to identify cleanup candidates"
+          ],
+          "remediation": "Contact fleet-manager team to increase quota or clean up old clusters",
+          "automation_gap": "No automated capacity checks before cluster creation"
+        },
+        {
+          "symptom": "Invalid provision shard error",
+          "likely_cause": "Typo in sector name or sector doesn't exist",
+          "debugging_steps": [
+            "Verify sector name: ocm list provision-shards"
+          ],
+          "remediation": "Correct sector name in TEST_SECTOR environment variable",
+          "automation_gap": "Should validate sector exists before attempting creation"
+        },
+        {
+          "symptom": "Cluster stuck in 'installing' state",
+          "likely_cause": "AWS service issues or control plane provisioning failure",
+          "debugging_steps": [
+            "Check installation logs: rosa logs install -c $TEST_CLUSTER_NAME",
+            "Check cluster status: rosa describe cluster -c $TEST_CLUSTER_NAME"
+          ],
+          "remediation": "Review logs for specific errors, may need to delete and recreate cluster",
+          "automation_gap": "No timeout handling or automatic retry logic"
+        }
+      ],
+      "pass_criteria": [
+        "HCP cluster created in srep-dev sector",
+        "Cluster state shows 'ready'",
+        "CLUSTER_ID and CLUSTER_API_URL variables populated",
+        "Details file created at /tmp/test-cluster-details.txt"
+      ],
+      "automation": {
+        "automated": false,
+        "jira_ticket": null,
+        "e2e_test_location": null,
+        "unit_test_location": null,
+        "integration_test_location": null,
+        "pipeline_url": null,
+        "automation_notes": "This test should be automated as part of E2E suite setup/teardown. Consider using existing cluster pool instead of creating new cluster each time."
+      },
+      "dashboards": [],
+      "sop_references": [],
+      "triage_guide": {
+        "common_alerts": [],
+        "debugging_checklist": [
+          "Verify OCM authentication is valid",
+          "Check sector capacity",
+          "Review rosa installation logs",
+          "Verify AWS account credentials are valid"
+        ]
+      },
+      "educational_notes": "ROSA HCP (Hosted Control Plane) clusters have their control plane hosted on a Management Cluster, while worker nodes run in the customer's AWS account. The srep-dev sector is a dedicated test environment maintained by the SRE team. When a cluster is created, OCM automatically configures metrics remote-write to RHOBS and creates a HostedCluster CR on the MC."
+    },
+    "test_2_logs_flow": {
+      "id": "test_2",
+      "name": "test_2_logs_flow",
+      "title": "Logs Flow End-to-End",
+      "objective": "Verify that logs (application and API audit logs) from an HCP cluster flow to Loki and are queryable in Grafana",
+      "intention": "This test validates the complete log forwarding pipeline from HCP clusters to Loki. It ensures that both application logs and API audit logs are captured, forwarded, labeled correctly, and queryable.",
+      "why_it_matters": "Log forwarding is critical for troubleshooting customer clusters and detecting security issues. Application logs help debug workload problems, while API audit logs track all API operations for security and compliance. If log forwarding fails, SREs lose visibility into cluster and workload behavior.",
+      "duration": "~30-45 minutes",
+      "dependencies": [
+        "test_1_cluster_creation"
+      ],
+      "prerequisites": [
+        "Newly created HCP cluster from Test 1",
+        "Loki API access credentials",
+        "Grafana access credentials",
+        "CLUSTER_ID and CLUSTER_API_URL environment variables set"
+      ],
+      "steps": [
+        {
+          "step_id": "2.1.1",
+          "title": "Create Unique Log Marker",
+          "command": "export LOG_MARKER=\"e2e-test-$(date +%s)-$(uuidgen | cut -d- -f1)\"\necho \"Log marker: $LOG_MARKER\"",
+          "description": "Generates a unique identifier to tag test logs for easy searching in Loki",
+          "expected_result": "LOG_MARKER variable set with timestamp and UUID"
+        },
+        {
+          "step_id": "2.1.2",
+          "title": "Deploy Log-Generating Pod",
+          "command": "cat <<EOF | oc apply -f -\napiVersion: v1\nkind: Pod\nmetadata:\n  name: log-generator\n  namespace: metrics-test\n  labels:\n    app: log-generator\nspec:\n  containers:\n  - name: logger\n    image: busybox:latest\n    command:\n    - /bin/sh\n    - -c\n    - |\n      while true; do\n        echo \"INFO: $LOG_MARKER - Test log entry \\$(date)\"\n        echo \"WARN: $LOG_MARKER - Warning message \\$(date)\"\n        echo \"ERROR: $LOG_MARKER - Error message \\$(date)\"\n        sleep 10\n      done\n  restartPolicy: Always\nEOF",
+          "description": "Deploys a pod that continuously generates logs at INFO, WARN, and ERROR levels with the unique marker",
+          "expected_result": "Pod created in metrics-test namespace"
+        },
+        {
+          "step_id": "2.1.3",
+          "title": "Verify Pod is Running and Generating Logs",
+          "command": "oc wait --for=condition=Ready pod/log-generator -n metrics-test --timeout=60s\noc logs -n metrics-test log-generator --tail=10",
+          "description": "Confirms pod is running and logs contain the unique marker",
+          "expected_result": "Pod shows Ready status and logs display with LOG_MARKER present"
+        },
+        {
+          "step_id": "2.2.1",
+          "title": "Trigger API Operations",
+          "command": "oc create namespace audit-test-$(date +%s)\noc get nodes\noc get pods -A --limit=10\noc delete namespace audit-test-*",
+          "description": "Performs various API operations (create, read, delete) to generate audit log entries",
+          "expected_result": "API operations succeed and generate audit logs"
+        },
+        {
+          "step_id": "2.2.2",
+          "title": "Verify Audit Logging is Enabled",
+          "command": "rosa describe cluster -c $TEST_CLUSTER_NAME | grep -i audit",
+          "description": "Confirms that audit logging is enabled for the HCP cluster (automatic in HCP)",
+          "expected_result": "Audit logging configuration visible in cluster description"
+        },
+        {
+          "step_id": "2.3.1",
+          "title": "Wait for Log Propagation",
+          "command": "echo \"Waiting 5 minutes for logs to propagate to Loki...\"\nsleep 300",
+          "description": "Allows time for logs to be forwarded from cluster to Loki (typically 2-5 minutes)",
+          "expected_result": "5 minute wait completes"
+        },
+        {
+          "step_id": "2.3.2",
+          "title": "Query Application Logs",
+          "command": "curl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode \"query={cluster_id=\\\"$CLUSTER_ID\\\",namespace=\\\"metrics-test\\\"} |= \\\"$LOG_MARKER\\\"\" \\\n  --data-urlencode \"limit=100\" \\\n  \"$LOKI_API_URL/loki/api/v1/query_range\" | jq",
+          "description": "Queries Loki for application logs with our unique marker",
+          "expected_result": "Returns log entries from log-generator pod with correct labels and content"
+        },
+        {
+          "step_id": "2.3.3",
+          "title": "Verify Log Labels",
+          "command": "curl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode \"query={cluster_id=\\\"$CLUSTER_ID\\\"} |= \\\"$LOG_MARKER\\\"\" \\\n  --data-urlencode \"limit=1\" \\\n  \"$LOKI_API_URL/loki/api/v1/query_range\" | \\\n  jq '.data.result[0].stream'",
+          "description": "Extracts and verifies log labels include cluster_id, namespace, pod, container",
+          "expected_result": "Log stream labels contain all required metadata"
+        },
+        {
+          "step_id": "2.3.4",
+          "title": "Query API Audit Logs",
+          "command": "curl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode \"query={cluster_id=\\\"$CLUSTER_ID\\\",log_type=\\\"audit\\\"}\" \\\n  --data-urlencode \"limit=10\" \\\n  \"$LOKI_API_URL/loki/api/v1/query_range\" | jq\n\ncurl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode \"query={cluster_id=\\\"$CLUSTER_ID\\\",log_type=\\\"audit\\\"} |~ \\\"create.*namespace\\\"\" \\\n  \"$LOKI_API_URL/loki/api/v1/query_range\" | jq '.data.result | length'",
+          "description": "Queries for API audit logs from our test operations",
+          "expected_result": "Finds audit log entries for namespace creation and other API operations"
+        },
+        {
+          "step_id": "2.4.1",
+          "title": "Query Logs via Grafana",
+          "command": "# Web UI: Navigate to Grafana Explore → Select Loki → Query: {cluster_id=\"$CLUSTER_ID\",namespace=\"metrics-test\"} |= \"$LOG_MARKER\"\n\n# Or via API:\ncurl -H \"Authorization: Bearer $GRAFANA_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -X POST \"$GRAFANA_URL/api/ds/query\" \\\n  -d '{\n    \"queries\": [\n      {\n        \"refId\": \"A\",\n        \"expr\": \"{cluster_id=\\\"'\"$CLUSTER_ID\"'\\\",namespace=\\\"metrics-test\\\"} |= \\\"'\"$LOG_MARKER\"'\\\"\"  ,\n        \"datasourceId\": 2\n      }\n    ],\n    \"from\": \"now-30m\",\n    \"to\": \"now\"\n  }' | jq",
+          "description": "Verifies logs are queryable through Grafana UI or API",
+          "expected_result": "Logs display in Grafana with timestamps and filtering capabilities"
+        },
+        {
+          "step_id": "2.5.1",
+          "title": "Check Log Continuity",
+          "command": "curl -G -H \"Authorization: Bearer $LOKI_TOKEN\" \\\n  --data-urlencode \"query=count_over_time({cluster_id=\\\"$CLUSTER_ID\\\",namespace=\\\"metrics-test\\\"} |= \\\"$LOG_MARKER\\\" [30m])\" \\\n  \"$LOKI_API_URL/loki/api/v1/query\" | jq",
+          "description": "Counts log entries over 30 minutes to verify continuous log stream (expects ~540 logs: 3 logs/10 sec * 6/min * 30 min)",
+          "expected_result": "Continuous log stream with no gaps, approximately 540 entries"
+        }
+      ],
+      "expected_results": {
+        "success_indicators": [
+          "Log-generating workload deployed successfully",
+          "Application logs appear in Loki within 10 minutes",
+          "API audit logs appear in Loki",
+          "Logs include correct labels (cluster_id, namespace, pod, container)",
+          "Logs queryable via Grafana with LogQL",
+          "Continuous log stream with no gaps"
+        ],
+        "what_success_means": "The log forwarding pipeline is fully operational. Application logs from workloads and audit logs from the API server are both captured, labeled correctly, and stored in Loki. SREs can query logs for troubleshooting and security analysis.",
+        "what_failure_means": "Log forwarding is broken or misconfigured. This creates a blind spot for troubleshooting workload issues and detecting security events. Missing logs can delay incident resolution and violate compliance requirements."
+      },
+      "failure_scenarios": [
+        {
+          "symptom": "No logs found in Loki after 10 minutes",
+          "likely_cause": "Log forwarding not configured or fluentd/vector pods not running",
+          "debugging_steps": [
+            "Check ClusterLogging CR exists: oc get clusterlogging -A",
+            "Check logging operator status: oc get pods -n openshift-logging",
+            "Check forwarder configuration: oc get clusterlogforwarder -A -o yaml",
+            "Check fluentd/vector logs for errors: oc logs -n openshift-logging <pod>"
+          ],
+          "remediation": "Verify log forwarding configuration in app-interface, ensure Loki endpoint is reachable",
+          "automation_gap": "Should automatically verify log forwarding configuration on cluster creation"
+        },
+        {
+          "symptom": "Application logs present but missing labels",
+          "likely_cause": "Label configuration issue in log forwarding pipeline",
+          "debugging_steps": [
+            "Review ClusterLogForwarder configuration for label mappings",
+            "Check for errors in fluentd/vector processing pipeline"
+          ],
+          "remediation": "Update log forwarding pipeline configuration to include required labels",
+          "automation_gap": "Should validate log labels automatically"
+        },
+        {
+          "symptom": "No audit logs appearing",
+          "likely_cause": "Audit log forwarding disabled for HCP clusters",
+          "debugging_steps": [
+            "Verify HCP audit log forwarding is enabled in stage environment",
+            "Check if audit policy is configured: rosa describe cluster -c $TEST_CLUSTER_NAME"
+          ],
+          "remediation": "Consult with team about HCP audit log configuration requirements",
+          "automation_gap": "Should verify audit logging is enabled before attempting to query"
+        },
+        {
+          "symptom": "Gaps in log timeline",
+          "likely_cause": "Log forwarding failures or Loki ingestion issues",
+          "debugging_steps": [
+            "Check fluentd/vector metrics for dropped logs",
+            "Check Loki distributor logs for errors",
+            "Verify network connectivity between cluster and Loki"
+          ],
+          "remediation": "Investigate and resolve log forwarding or Loki ingestion issues",
+          "automation_gap": "Should monitor for gaps in log continuity"
+        }
+      ],
+      "pass_criteria": [
+        "Log-generating workload deployed successfully",
+        "Application logs appear in Loki within 10 minutes",
+        "API audit logs appear in Loki",
+        "Logs include correct labels (cluster_id, namespace, pod)",
+        "Logs queryable via Grafana with LogQL",
+        "Continuous log stream with no gaps"
+      ],
+      "automation": {
+        "automated": false,
+        "jira_ticket": null,
+        "e2e_test_location": null,
+        "unit_test_location": null,
+        "integration_test_location": null,
+        "pipeline_url": null,
+        "automation_notes": "Should be automated to run continuously. Consider using existing log markers to avoid creating test workloads. May need to mock audit log generation."
+      },
+      "dashboards": [],
+      "sop_references": [
+        {
+          "title": "Log Forwarding Troubleshooting",
+          "url": null,
+          "description": "Placeholder for SOP on debugging log forwarding issues"
+        }
+      ],
+      "triage_guide": {
+        "common_alerts": [
+          "ClusterLoggingOperatorOffline",
+          "LogForwardingFailure"
+        ],
+        "debugging_checklist": [
+          "Verify ClusterLogging and ClusterLogForwarder CRs exist",
+          "Check openshift-logging namespace pods are running",
+          "Verify Loki endpoint is reachable from cluster",
+          "Check for errors in fluentd/vector logs",
+          "Test Loki API authentication",
+          "Verify log retention policies in Loki"
+        ]
+      },
+      "educational_notes": "HCP clusters forward logs using the OpenShift cluster-logging-operator and either fluentd or vector as the collection agent. Logs are labeled with cluster_id, namespace, pod, and container metadata before being sent to Loki. Loki stores logs as streams (groups of log entries with identical labels) and allows querying using LogQL, a query language similar to PromQL. API audit logs track all requests to the Kubernetes API server and are essential for security and compliance."
+    },
+    "test_3_synthetic_monitoring": {
+      "id": "test_3",
+      "name": "test_3_synthetic_monitoring",
+      "title": "Synthetic Monitoring Flow End-to-End",
+      "objective": "Verify the complete synthetic monitoring flow: RMO detects HCP cluster → registers probe in API → agent picks up probe → blackbox executes probe → metrics appear in RHOBS",
+      "intention": "This test validates the entire synthetic monitoring system that continuously probes cluster API endpoints for availability. It ensures all components work together: route-monitor-operator (RMO), rhobs-synthetics-api, rhobs-synthetics-agent, blackbox-exporter, and the metrics pipeline to RHOBS.",
+      "why_it_matters": "Synthetic monitoring provides external validation that cluster APIs are reachable and responsive. It's the first line of defense for detecting cluster availability issues, often before customers report problems. This test ensures the synthetic monitoring system can automatically discover new clusters, configure probes, execute them, and report results to RHOBS where they power customer-facing dashboards and SRE alerts.",
+      "duration": "~30-45 minutes (including cluster deletion lifecycle test)",
+      "dependencies": [
+        "test_1_cluster_creation"
+      ],
+      "prerequisites": [
+        "HCP cluster from Test 1 (or create new one)",
+        "Access to Management Cluster (MC)",
+        "RHOBS API access credentials",
+        "Access to RHOBS Cell cluster",
+        "CLUSTER_ID and CLUSTER_API_URL environment variables set",
+        "MC_CLUSTER_ID environment variable set"
+      ],
+      "steps": [
+        {
+          "step_id": "3.1.1",
+          "title": "Login to Management Cluster",
+          "command": "export MC_CLUSTER_ID=\"<mc-cluster-id>\"  # From setup\nocm backplane login $MC_CLUSTER_ID\noc whoami",
+          "description": "Connects to the Management Cluster where route-monitor-operator runs and HostedCluster CRs exist",
+          "expected_result": "Successfully authenticated to MC, oc whoami shows username"
+        },
+        {
+          "step_id": "3.1.2",
+          "title": "Check RMO Deployment",
+          "command": "export RMO_NS=$(oc get deployment -A | grep route-monitor-operator | awk '{print $1}')\necho \"RMO Namespace: $RMO_NS\"\noc get deployment -n $RMO_NS route-monitor-operator -o yaml\noc get deployment -n $RMO_NS route-monitor-operator -o yaml | grep -A3 \"probe-api-url\"",
+          "description": "Verifies RMO is deployed and configured with the correct RHOBS synthetics API endpoint",
+          "expected_result": "RMO deployment exists and probe-api-url points to RHOBS synthetics API"
+        },
+        {
+          "step_id": "3.1.3",
+          "title": "Check RMO Logs",
+          "command": "oc logs -n $RMO_NS deployment/route-monitor-operator --tail=50",
+          "description": "Reviews recent RMO logs for errors or connection issues",
+          "expected_result": "No errors in logs, successful API connections visible"
+        },
+        {
+          "step_id": "3.2.1",
+          "title": "Check HostedCluster CR Exists",
+          "command": "oc get hostedclusters -A\noc get hostedclusters -A | grep $TEST_CLUSTER_NAME\nexport HC_NAMESPACE=$(oc get hostedclusters -A | grep $TEST_CLUSTER_NAME | awk '{print $1}')\noc get hostedcluster -n $HC_NAMESPACE $TEST_CLUSTER_NAME -o yaml",
+          "description": "Locates the HostedCluster CR for our test cluster that RMO watches",
+          "expected_result": "HostedCluster CR exists with correct metadata and API endpoint"
+        },
+        {
+          "step_id": "3.2.2",
+          "title": "Verify API URL in HostedCluster",
+          "command": "export HC_API_URL=$(oc get hostedcluster -n $HC_NAMESPACE $TEST_CLUSTER_NAME -o jsonpath='{.status.controlPlaneEndpoint.host}')\necho \"HostedCluster API URL: $HC_API_URL\"\necho \"Expected API URL: $CLUSTER_API_URL\"",
+          "description": "Extracts the API URL from HostedCluster status and compares to expected value",
+          "expected_result": "API URLs match (HC_API_URL is the host portion of CLUSTER_API_URL)"
+        },
+        {
+          "step_id": "3.2.3",
+          "title": "Monitor RMO Watching HostedCluster",
+          "command": "oc logs -n $RMO_NS deployment/route-monitor-operator -f | grep -i \"hostedcluster\\|$TEST_CLUSTER_NAME\"",
+          "description": "Watches RMO logs for evidence it detected the HostedCluster",
+          "expected_result": "Log entries showing HostedCluster detection, e.g. 'Detected new HostedCluster: <cluster-name>'"
+        },
+        {
+          "step_id": "3.3.1",
+          "title": "Wait for Probe Registration",
+          "command": "echo \"Waiting 2 minutes for probe registration...\"\nsleep 120",
+          "description": "Allows time for RMO to register probe with RHOBS API (typically 1-2 minutes)",
+          "expected_result": "2 minute wait completes"
+        },
+        {
+          "step_id": "3.3.2",
+          "title": "Query RHOBS API for Probe",
+          "command": "curl -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes\" | \\\n  jq '.probes[] | select(.labels.cluster_id == \"'\"$CLUSTER_ID\"'\")'",
+          "description": "Queries RHOBS synthetics API for the probe registered for our cluster",
+          "expected_result": "Returns probe object with cluster_id label matching our cluster"
+        },
+        {
+          "step_id": "3.3.3",
+          "title": "Capture Probe ID",
+          "command": "export PROBE_ID=$(curl -s -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes\" | \\\n  jq -r '.probes[] | select(.labels.cluster_id == \"'\"$CLUSTER_ID\"'\") | .id')\n\necho \"Probe ID: $PROBE_ID\"\n\nif [ -z \"$PROBE_ID\" ]; then\n  echo \"ERROR: Probe not found!\"\n  exit 1\nfi",
+          "description": "Extracts and validates probe ID for use in subsequent queries",
+          "expected_result": "PROBE_ID variable set with valid probe ID"
+        },
+        {
+          "step_id": "3.3.4",
+          "title": "Verify Probe Details",
+          "command": "curl -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes/$PROBE_ID\" | jq",
+          "description": "Retrieves full probe configuration and validates details",
+          "expected_result": "Probe has correct static_url (cluster API), cluster_id label, management_cluster_id, and private label"
+        },
+        {
+          "step_id": "3.4.1",
+          "title": "Login to RHOBS Cell Cluster",
+          "command": "export RHOBS_CLUSTER_ID=\"<rhobs-cell-cluster-id>\"\nocm backplane login $RHOBS_CLUSTER_ID\nexport AGENT_NS=$(oc get deployment -A | grep synthetics-agent | awk '{print $1}')\necho \"Agent Namespace: $AGENT_NS\"",
+          "description": "Connects to RHOBS cell cluster where synthetics-agent runs",
+          "expected_result": "Successfully authenticated, agent namespace identified"
+        },
+        {
+          "step_id": "3.4.2",
+          "title": "Check Agent is Running",
+          "command": "oc get deployment -n $AGENT_NS rhobs-synthetics-agent\noc logs -n $AGENT_NS deployment/rhobs-synthetics-agent --tail=50",
+          "description": "Verifies agent deployment is healthy and running",
+          "expected_result": "Agent deployment shows ready status, logs show recent activity"
+        },
+        {
+          "step_id": "3.4.3",
+          "title": "Monitor Agent Polling",
+          "command": "oc logs -n $AGENT_NS deployment/rhobs-synthetics-agent -f | grep -i \"probe\\|$CLUSTER_ID\"",
+          "description": "Watches agent logs for evidence of polling API and discovering our probe",
+          "expected_result": "Logs show 'Fetched N probes from API', 'Found probe for cluster <cluster-id>', 'Creating Probe CR for probe-<id>'"
+        },
+        {
+          "step_id": "3.4.4",
+          "title": "Verify Probe CR Created",
+          "command": "sleep 60\noc get probes -n $AGENT_NS\noc get probe -n $AGENT_NS | grep $CLUSTER_ID\nexport PROBE_CR_NAME=$(oc get probe -n $AGENT_NS -o json | jq -r '.items[] | select(.metadata.labels.\"rhobs.monitoring/cluster-id\" == \"'\"$CLUSTER_ID\"'\") | .metadata.name')\necho \"Probe CR Name: $PROBE_CR_NAME\"\noc get probe -n $AGENT_NS $PROBE_CR_NAME -o yaml",
+          "description": "Confirms agent created a Probe CR for blackbox-exporter to consume",
+          "expected_result": "Probe CR exists with correct target URL and labels"
+        },
+        {
+          "step_id": "3.5.1",
+          "title": "Check Blackbox Exporter",
+          "command": "oc get deployment -n $AGENT_NS | grep blackbox\noc logs -n $AGENT_NS deployment/synthetics-blackbox-prober -f | grep -i \"$CLUSTER_API_URL\"",
+          "description": "Verifies blackbox exporter is executing HTTP probes against cluster API",
+          "expected_result": "Blackbox exporter logs show probe executions against cluster API URL"
+        },
+        {
+          "step_id": "3.5.2",
+          "title": "Check Prometheus Scraping Probes",
+          "command": "oc get prometheus -n $AGENT_NS\noc exec -n $AGENT_NS prometheus-rhobs-synthetics-0 -- \\\n  promtool query instant http://localhost:9090 \\\n  \"probe_success{cluster_id=\\\"$CLUSTER_ID\\\"}\"",
+          "description": "Queries Prometheus on RHOBS cell to verify it's scraping probe metrics",
+          "expected_result": "Returns probe_success metric with value of 1 (success) or 0 (failure)"
+        },
+        {
+          "step_id": "3.5.3",
+          "title": "Verify Probe Status Update",
+          "command": "curl -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes/$PROBE_ID\" | \\\n  jq '.status'",
+          "description": "Checks if agent updated probe status in API based on execution results",
+          "expected_result": "Status is 'active' (if probe succeeded) or 'failed' (if probe failed), no longer 'pending'"
+        },
+        {
+          "step_id": "3.6.1",
+          "title": "Wait for Metrics to Propagate",
+          "command": "echo \"Waiting 5 minutes for probe metrics to propagate...\"\nsleep 300",
+          "description": "Allows time for metrics to be remote-written from RHOBS cell Prometheus to Thanos",
+          "expected_result": "5 minute wait completes"
+        },
+        {
+          "step_id": "3.6.2",
+          "title": "Query Probe Metrics",
+          "command": "curl -G -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  --data-urlencode \"query=probe_success{cluster_id=\\\"$CLUSTER_ID\\\"}\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/api/v1/query\" | jq",
+          "description": "Queries RHOBS/Thanos for probe_success metric",
+          "expected_result": "Returns probe_success=1 with correct labels (cluster_id, management_cluster_id, probe_type)"
+        },
+        {
+          "step_id": "3.6.3",
+          "title": "Query Additional Probe Metrics",
+          "command": "curl -G -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  --data-urlencode \"query=probe_duration_seconds{cluster_id=\\\"$CLUSTER_ID\\\"}\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/api/v1/query\" | jq\n\ncurl -G -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  --data-urlencode \"query=probe_http_status_code{cluster_id=\\\"$CLUSTER_ID\\\"}\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/api/v1/query\" | jq",
+          "description": "Queries for additional probe metrics like duration and HTTP status code",
+          "expected_result": "Returns duration metrics and HTTP 200 status code"
+        },
+        {
+          "step_id": "3.6.4",
+          "title": "Verify Metric Labels",
+          "command": "curl -G -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  --data-urlencode \"query=probe_success{cluster_id=\\\"$CLUSTER_ID\\\"}\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/api/v1/query\" | \\\n  jq '.data.result[0].metric'",
+          "description": "Extracts and verifies all required labels are present on probe metrics",
+          "expected_result": "Labels include cluster_id, management_cluster_id, apiserver_url, probe_type"
+        },
+        {
+          "step_id": "3.7.1",
+          "title": "Delete Test Cluster",
+          "command": "rosa delete cluster -c $TEST_CLUSTER_NAME --yes\nwatch -n 30 rosa describe cluster -c $TEST_CLUSTER_NAME",
+          "description": "Deletes the test cluster to validate probe lifecycle cleanup",
+          "expected_result": "Cluster deletion initiated, status changes to 'uninstalling'"
+        },
+        {
+          "step_id": "3.7.2",
+          "title": "Verify HostedCluster Deletion",
+          "command": "oc get hostedcluster -n $HC_NAMESPACE $TEST_CLUSTER_NAME",
+          "description": "Checks if HostedCluster CR is deleted from MC",
+          "expected_result": "HostedCluster not found or in 'Deleting' state"
+        },
+        {
+          "step_id": "3.7.3",
+          "title": "Verify Probe Deletion from API",
+          "command": "sleep 180\ncurl -H \"Authorization: Bearer $RHOBS_TOKEN\" \\\n  \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes/$PROBE_ID\"",
+          "description": "Waits for RMO to detect cluster deletion and remove probe from API",
+          "expected_result": "Returns 404 Not Found or similar error"
+        },
+        {
+          "step_id": "3.7.4",
+          "title": "Verify Probe CR Deletion from RHOBS Cluster",
+          "command": "oc get probe -n $AGENT_NS $PROBE_CR_NAME",
+          "description": "Checks if agent cleaned up Probe CR on RHOBS cell",
+          "expected_result": "Probe CR not found"
+        }
+      ],
+      "expected_results": {
+        "success_indicators": [
+          "route-monitor-operator detects HostedCluster",
+          "Probe registered in RHOBS API with correct details",
+          "rhobs-synthetics-agent picks up probe",
+          "Probe CR created on RHOBS cell cluster",
+          "Blackbox exporter executes probe successfully",
+          "Probe metrics appear in RHOBS (probe_success = 1)",
+          "Probe lifecycle works (deletion cleans up properly)"
+        ],
+        "what_success_means": "The complete synthetic monitoring system is operational. Clusters are automatically discovered, probes are configured and executed, and results flow to RHOBS where they power availability dashboards and alerts. SREs have visibility into cluster API reachability from external vantage points.",
+        "what_failure_means": "Synthetic monitoring is broken, creating a gap in cluster availability monitoring. SREs may not detect cluster API outages until customers report issues. This defeats the purpose of proactive monitoring and increases MTTR (mean time to resolution) for availability incidents."
+      },
+      "failure_scenarios": [
+        {
+          "symptom": "Probe never registered in API",
+          "likely_cause": "RMO not watching HostedClusters or API unreachable from MC",
+          "debugging_steps": [
+            "Check RMO watches: oc logs -n $RMO_NS deployment/route-monitor-operator | grep -i watch",
+            "Check RMO API client errors: oc logs -n $RMO_NS deployment/route-monitor-operator | grep -i error",
+            "Test API connectivity from MC: oc debug node/<node> -- curl -v $RHOBS_API_URL",
+            "Verify RMO configuration includes probe-api-url"
+          ],
+          "remediation": "Fix RMO configuration or network connectivity between MC and RHOBS API",
+          "automation_gap": "Should automatically verify RMO can reach API before cluster creation"
+        },
+        {
+          "symptom": "Agent doesn't create Probe CR",
+          "likely_cause": "Label selector mismatch or URL validation failure",
+          "debugging_steps": [
+            "Check agent polling logs: oc logs -n $AGENT_NS deployment/rhobs-synthetics-agent",
+            "Verify label selector: oc get deployment -n $AGENT_NS rhobs-synthetics-agent -o yaml | grep label-selector",
+            "Check URL validation: oc logs -n $AGENT_NS deployment/rhobs-synthetics-agent | grep -i 'validation\\|failed'",
+            "Verify probe exists in API with correct labels"
+          ],
+          "remediation": "Fix label selector or address URL validation failures",
+          "automation_gap": "Should validate agent configuration matches API probe labels"
+        },
+        {
+          "symptom": "probe_success = 0 (failing)",
+          "likely_cause": "Cluster API not reachable from RHOBS cell",
+          "debugging_steps": [
+            "Test connectivity from RHOBS cell: oc debug node/<node> -- curl -v https://<cluster-api>:6443/readyz",
+            "Check network policies or firewall rules between RHOBS cell and cluster",
+            "Verify cluster API is actually healthy: rosa describe cluster -c $TEST_CLUSTER_NAME",
+            "Check blackbox exporter logs for detailed error: oc logs -n $AGENT_NS deployment/synthetics-blackbox-prober"
+          ],
+          "remediation": "Fix network connectivity or cluster API issues",
+          "automation_gap": "Should alert on probe_success=0 for new clusters"
+        },
+        {
+          "symptom": "Probe metrics not in RHOBS",
+          "likely_cause": "Prometheus remote write not configured or failing",
+          "debugging_steps": [
+            "Check Prometheus remote write config on RHOBS cell",
+            "Check Prometheus logs for remote write errors: oc logs -n $AGENT_NS prometheus-rhobs-synthetics-0 | grep 'remote write'",
+            "Verify RHOBS Thanos receiver is healthy"
+          ],
+          "remediation": "Fix Prometheus remote write configuration or Thanos receiver issues",
+          "automation_gap": "Should monitor remote write success rate"
+        },
+        {
+          "symptom": "Probe not deleted after cluster deletion",
+          "likely_cause": "RMO not detecting cluster deletion or finalizer issues",
+          "debugging_steps": [
+            "Check HostedCluster finalizers: oc get hostedcluster -n $HC_NAMESPACE $TEST_CLUSTER_NAME -o yaml | grep finalizers",
+            "Check RMO logs for deletion detection: oc logs -n $RMO_NS deployment/route-monitor-operator",
+            "Manually verify probe in API: curl -H 'Authorization: Bearer $RHOBS_TOKEN' '$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes/$PROBE_ID'"
+          ],
+          "remediation": "Manually delete orphaned probe from API, investigate RMO deletion handling",
+          "automation_gap": "Should detect and clean up orphaned probes"
+        }
+      ],
+      "pass_criteria": [
+        "route-monitor-operator detects HostedCluster",
+        "Probe registered in RHOBS API with correct details",
+        "rhobs-synthetics-agent picks up probe",
+        "Probe CR created on RHOBS cell cluster",
+        "Blackbox exporter executes probe successfully",
+        "Probe metrics appear in RHOBS (probe_success = 1)",
+        "Probe lifecycle works (deletion cleans up properly)"
+      ],
+      "automation": {
+        "automated": false,
+        "jira_ticket": null,
+        "e2e_test_location": null,
+        "unit_test_location": null,
+        "integration_test_location": null,
+        "pipeline_url": null,
+        "automation_notes": "This is the highest priority test to automate. Should run continuously against srep-dev sector. Consider splitting into separate tests for creation and deletion lifecycle. Mock components where possible to reduce external dependencies."
+      },
+      "dashboards": [
+        {
+          "name": "Synthetic Monitoring Health",
+          "url": null,
+          "description": "Placeholder for dashboard showing probe success rate, execution latency, and coverage"
+        }
+      ],
+      "sop_references": [
+        {
+          "title": "Synthetic Monitoring Troubleshooting",
+          "url": null,
+          "description": "Placeholder for SOP on debugging synthetic monitoring failures"
+        },
+        {
+          "title": "RMO Configuration",
+          "url": null,
+          "description": "Placeholder for SOP on configuring route-monitor-operator"
+        }
+      ],
+      "triage_guide": {
+        "common_alerts": [
+          "ProbeFailure",
+          "ProbeNotRegistered",
+          "SyntheticMonitoringAgentDown"
+        ],
+        "debugging_checklist": [
+          "Verify RMO is running on MC",
+          "Check HostedCluster CR exists and has correct API URL",
+          "Query RHOBS API for probe registration",
+          "Check synthetics-agent logs on RHOBS cell",
+          "Verify Probe CR exists on RHOBS cell",
+          "Check blackbox exporter execution",
+          "Query Prometheus for probe_success metric",
+          "Verify metrics in RHOBS/Thanos",
+          "Test network connectivity from RHOBS cell to cluster API"
+        ]
+      },
+      "educational_notes": "The synthetic monitoring system uses a distributed architecture: route-monitor-operator (RMO) runs on each Management Cluster and watches for HostedCluster CRs. When it detects a new cluster, it registers a probe via the RHOBS synthetics API. The rhobs-synthetics-agent polls the API periodically and creates Probe CRs for the blackbox-exporter to consume. The blackbox-exporter executes HTTP probes against cluster API /readyz endpoints and exposes metrics. Prometheus scrapes these metrics and remote-writes them to RHOBS. This architecture provides external validation of cluster availability independent of the cluster's own monitoring stack."
+    }
+  },
+  "cleanup": {
+    "description": "Procedures for cleaning up test resources after test completion",
+    "steps": [
+      {
+        "step": "Delete test cluster",
+        "command": "rosa delete cluster -c $TEST_CLUSTER_NAME --yes\nwatch -n 30 rosa list clusters | grep $TEST_CLUSTER_NAME"
+      },
+      {
+        "step": "Verify probe cleanup",
+        "command": "curl -H \"Authorization: Bearer $RHOBS_TOKEN\" \"$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes\" | jq '.probes[] | select(.labels.cluster_id == \"'\"$CLUSTER_ID\"'\")'"
+      },
+      {
+        "step": "Clean up orphaned Probe CRs",
+        "command": "oc get probes -n $AGENT_NS | grep $CLUSTER_ID\noc delete probe -n $AGENT_NS <probe-name>"
+      },
+      {
+        "step": "Document test results",
+        "command": "cat > /tmp/e2e-test-results-$(date +%Y%m%d-%H%M%S).txt <<EOF\nRHOBS E2E Test Results\n======================\nDate: $(date)\nTester: $(whoami)\n\nTest 1 - Cluster Creation:\n- Status: [PASS/FAIL]\n- Notes: <any notes>\n\nTest 2 - Logs Flow:\n- Status: [PASS/FAIL]\n- Notes: <any notes>\n\nTest 3 - Synthetics Flow:\n- Status: [PASS/FAIL]\n- Notes: <any notes>\n\nOverall: [PASS/FAIL]\nEOF"
+      }
+    ]
+  },
+  "troubleshooting": {
+    "common_issues": [
+      {
+        "issue": "Authentication Failures",
+        "symptoms": [
+          "401 Unauthorized errors from APIs",
+          "token expired messages"
+        ],
+        "debugging": [
+          "Check OCM token expiry: ocm token --refresh",
+          "Verify RHOBS token: curl -H 'Authorization: Bearer $RHOBS_TOKEN' '$RHOBS_API_URL/api/metrics/v1/$RHOBS_TENANT/probes'",
+          "Re-authenticate: ocm login --url=https://api.stage.openshift.com"
+        ],
+        "resolution": [
+          "Refresh tokens",
+          "Verify credentials in Vault are current",
+          "Contact team if persistent issues"
+        ]
+      },
+      {
+        "issue": "Cluster Creation Failures",
+        "symptoms": [
+          "Cluster stuck in 'installing' state",
+          "insufficient capacity errors"
+        ],
+        "debugging": [
+          "Check cluster status: rosa describe cluster -c $TEST_CLUSTER_NAME",
+          "View installation logs: rosa logs install -c $TEST_CLUSTER_NAME --watch",
+          "Check sector capacity: ocm list provision-shards | grep $TEST_SECTOR"
+        ],
+        "resolution": [
+          "For capacity issues: Contact fleet-manager team",
+          "For installation failures: Check rosa logs and file bug if needed",
+          "Clean up old clusters in sector to free quota"
+        ]
+      },
+      {
+        "issue": "Network Connectivity",
+        "symptoms": [
+          "Timeouts when querying APIs",
+          "Probes failing with 'target unreachable'"
+        ],
+        "debugging": [
+          "Test connectivity from local: curl -v -m 10 $RHOBS_API_URL",
+          "Test from MC: oc debug node/<node> -- curl -v https://<cluster-api>:6443/readyz",
+          "Test from RHOBS cell: oc debug node/<node> -- curl -v https://<cluster-api>:6443/readyz"
+        ],
+        "resolution": [
+          "Check firewall rules between clusters",
+          "Verify VPC peering if applicable",
+          "Contact network team for persistent issues"
+        ]
+      },
+      {
+        "issue": "Metrics/Logs Not Appearing",
+        "symptoms": [
+          "Data expected but not found in RHOBS/Loki",
+          "Queries return empty results"
+        ],
+        "debugging": [
+          "Check remote write config: oc get secret -n openshift-monitoring | grep remote-write",
+          "Check Prometheus remote write status: oc exec -n openshift-monitoring prometheus-k8s-0 -- curl localhost:9090/metrics | grep remote_write",
+          "Check log forwarding: oc get clusterlogging -A && oc get pods -n openshift-logging"
+        ],
+        "resolution": [
+          "Verify remote write/log forwarding configuration in app-interface",
+          "Check receiver endpoints are healthy",
+          "Review Prometheus/fluentd logs for errors"
+        ]
+      }
+    ],
+    "getting_help": {
+      "documentation": [
+        "RMO README: route-monitor-operator/README.md",
+        "Synthetics API README: rhobs-synthetics-api/README.md",
+        "Synthetics Agent README: rhobs-synthetics-agent/README.md"
+      ],
+      "search_existing_issues": [
+        "Jira: project = SREP AND text ~ \"synthetics OR rhobs\"",
+        "Slack: Search in #forum-rhobs-core"
+      ],
+      "contact": [
+        "Slack: #forum-rhobs-core",
+        "Tag: @rhobs-team",
+        "Email: rhobs-team@redhat.com"
+      ],
+      "file_bug": "If you discover a reproducible issue, file a Jira ticket. Include: steps to reproduce, expected vs actual behavior, relevant logs"
+    }
+  },
+  "appendix": {
+    "expected_timelines": [
+      {
+        "event": "Cluster creation",
+        "typical_duration": "10-15 minutes",
+        "max_wait_time": "30 minutes"
+      },
+      {
+        "event": "Metrics in RHOBS",
+        "typical_duration": "2-5 minutes",
+        "max_wait_time": "10 minutes"
+      },
+      {
+        "event": "Logs in Loki",
+        "typical_duration": "2-5 minutes",
+        "max_wait_time": "10 minutes"
+      },
+      {
+        "event": "Probe registration",
+        "typical_duration": "1-2 minutes",
+        "max_wait_time": "5 minutes"
+      },
+      {
+        "event": "Probe execution",
+        "typical_duration": "30-60 seconds",
+        "max_wait_time": "2 minutes"
+      },
+      {
+        "event": "Probe metrics in RHOBS",
+        "typical_duration": "2-5 minutes",
+        "max_wait_time": "10 minutes"
+      },
+      {
+        "event": "Cluster deletion",
+        "typical_duration": "5-10 minutes",
+        "max_wait_time": "20 minutes"
+      }
+    ],
+    "validation_checklist": {
+      "test_1_metrics": [
+        "Cluster created successfully",
+        "Details captured (CLUSTER_ID, CLUSTER_API_URL)"
+      ],
+      "test_2_logs": [
+        "Logs generated",
+        "Application logs in Loki",
+        "Audit logs in Loki",
+        "Logs in Grafana",
+        "Correct labels present"
+      ],
+      "test_3_synthetics": [
+        "RMO detects cluster",
+        "Probe registered in API",
+        "Agent creates Probe CR",
+        "Probe executes successfully",
+        "Probe metrics in RHOBS",
+        "Lifecycle works (deletion)"
+      ]
+    }
+  },
+  "next_steps": {
+    "team_review": [
+      "Review this manual test plan with team",
+      "Validate steps by having 2-3 people execute independently",
+      "Collect feedback and refine procedures",
+      "Get sign-off from Matt and Dustin",
+      "Use this as specification for automation (Phase 4)"
+    ],
+    "validation_process": [
+      "Assign 2-3 team members to execute this plan independently",
+      "Each person should document: unclear steps, missing information, actual vs expected results, suggestions for improvement",
+      "Schedule review meeting to discuss findings",
+      "Update plan based on feedback"
+    ],
+    "once_validated": [
+      "Mark Phase 1 as complete in Jira",
+      "Begin Phase 2 (Repository decision)",
+      "Use this plan as foundation for automated tests in Phase 4"
+    ]
+  }
+}

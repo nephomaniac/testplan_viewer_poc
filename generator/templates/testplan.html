@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Metadata.DocumentTitle}}</title>
+
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+
+    <!-- Custom Tailwind config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        beginner: '#10b981',
+                        intermediate: '#f59e0b',
+                        advanced: '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        .difficulty-badge {
+            @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide;
+        }
+
+        .difficulty-beginner {
+            @apply bg-green-100 text-green-800;
+        }
+
+        .difficulty-intermediate {
+            @apply bg-yellow-100 text-yellow-800;
+        }
+
+        .difficulty-advanced {
+            @apply bg-red-100 text-red-800;
+        }
+
+        .progress-ring {
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        @media print {
+            .no-print { display: none; }
+            .test-card { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50" x-data="testPlanApp()" x-init="init()">
+
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg">
+        <div class="container mx-auto px-6 py-8">
+            <h1 class="text-4xl font-bold mb-2">{{.Metadata.DocumentTitle}}</h1>
+            <p class="text-blue-100 text-lg">{{.Metadata.Purpose}}</p>
+
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <span class="opacity-75">Target Audience:</span>
+                    <div class="font-semibold">{{.Metadata.TargetAudience}}</div>
+                </div>
+                <div>
+                    <span class="opacity-75">Total Time:</span>
+                    <div class="font-semibold">{{.Metadata.EstimatedTotalTime}}</div>
+                </div>
+                <div>
+                    <span class="opacity-75">Status:</span>
+                    <div class="font-semibold">{{.Metadata.Status}}</div>
+                </div>
+                <div>
+                    <span class="opacity-75">Epic:</span>
+                    <div class="font-semibold">{{.Metadata.Epic}}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="bg-white border-b sticky top-0 z-40 shadow-sm no-print">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-700">Your Progress</span>
+                <span class="text-sm text-gray-600" x-text="Math.round(progressPercentage) + '%'"></span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                     :style="'width: ' + progressPercentage + '%'"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-6 py-8">
+
+        <!-- Controls -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6 no-print">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                <!-- Search -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                    <input type="text"
+                           x-model="searchTerm"
+                           placeholder="Search tests, steps, concepts..."
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <!-- Difficulty Filter -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+                    <select x-model="difficultyFilter"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Levels</option>
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+
+                <!-- View Mode -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">View Mode</label>
+                    <div class="flex gap-2">
+                        <button @click="expandAll()"
+                                class="flex-1 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition">
+                            Expand All
+                        </button>
+                        <button @click="collapseAll()"
+                                class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+                            Collapse All
+                        </button>
+                        <button @click="resetProgress()"
+                                class="flex-1 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition">
+                            Reset Progress
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Learning Objectives -->
+        <div class="bg-blue-50 rounded-lg shadow-md p-6 mb-6 border-l-4 border-blue-500">
+            <h2 class="text-2xl font-bold text-blue-900 mb-4">📚 Learning Objectives</h2>
+            <ul class="space-y-2">
+                {{range .Metadata.LearningObjectives}}
+                <li class="flex items-start">
+                    <svg class="w-6 h-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700">{{.}}</span>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+
+        <!-- Prerequisites -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🔧 Prerequisites</h2>
+
+            <!-- Required Knowledge -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">Required Knowledge</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {{range .Prerequisites.RequiredKnowledge}}
+                    <div class="border rounded-lg p-4 {{if eq .Level "optional"}}bg-gray-50{{else}}bg-white{{end}}">
+                        <div class="font-semibold text-gray-800">{{.Topic}}</div>
+                        <div class="text-sm text-gray-600 mt-1">
+                            <span class="px-2 py-1 rounded {{if eq .Level "beginner"}}bg-green-100 text-green-800{{else if eq .Level "intermediate"}}bg-yellow-100 text-yellow-800{{else}}bg-gray-100 text-gray-600{{end}}">
+                                {{.Level}}
+                            </span>
+                        </div>
+                        {{if .Resources}}
+                        <div class="mt-2 space-y-1">
+                            {{range .Resources}}
+                            <a href="{{.}}" target="_blank" class="text-xs text-blue-600 hover:underline block">📖 Resource</a>
+                            {{end}}
+                        </div>
+                        {{end}}
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+
+            <!-- Required Access -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">Required Access</h3>
+                <div class="space-y-3">
+                    {{range .Prerequisites.RequiredAccess}}
+                    <div class="border-l-4 border-blue-500 bg-blue-50 p-4 rounded">
+                        <div class="font-semibold text-gray-800">{{.Name}}</div>
+                        <div class="text-sm text-gray-600 mt-1">{{.Purpose}}</div>
+                        <div class="mt-2 text-sm">
+                            <span class="font-medium text-gray-700">How to get:</span>
+                            <span class="text-gray-600">{{.HowToGet}}</span>
+                        </div>
+                        <div class="mt-2">
+                            <code class="text-xs bg-gray-800 text-green-400 px-3 py-1 rounded">{{.Verification}}</code>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Cases -->
+        <div class="space-y-6">
+            {{$testPlan := .}}
+            {{range $index, $testID := .LearningPath.Sequence}}
+                {{$test := index $testPlan.TestCases $testID}}
+                <div class="test-card bg-white rounded-lg shadow-md overflow-hidden border-2 transition-all"
+                     :class="getTestCardClass('{{$test.Metadata.ID}}')"
+                     x-show="filterTest({{json $test}})"
+                     x-cloak>
+
+                    <!-- Test Header -->
+                    <div class="p-6 cursor-pointer hover:bg-gray-50 transition"
+                         @click="toggleTest('{{$test.Metadata.ID}}')">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <span class="text-3xl">{{add $index 1}}</span>
+                                    <h3 class="text-2xl font-bold text-gray-800">{{$test.Metadata.Title}}</h3>
+                                </div>
+                                <p class="text-gray-600 mt-2">{{$test.TestExecution.Objective}}</p>
+
+                                <div class="flex items-center gap-4 mt-4 text-sm">
+                                    <span class="difficulty-badge difficulty-{{$test.Metadata.Difficulty}}">
+                                        {{$test.Metadata.Difficulty}}
+                                    </span>
+                                    <span class="text-gray-600">⏱️ {{$test.Metadata.EstimatedTime}}</span>
+                                    <span class="text-gray-600">🎯 {{$test.Metadata.HandsOnPercentage}}% hands-on</span>
+                                    {{if $test.TestExecution.Dependencies}}
+                                    <span class="text-gray-600">⛓️ Depends on: {{len $test.TestExecution.Dependencies}} test(s)</span>
+                                    {{end}}
+                                </div>
+                            </div>
+
+                            <!-- Completion Checkbox -->
+                            <div class="flex items-center gap-4 ml-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isTestCompleted('{{$test.Metadata.ID}}')"
+                                           @change="toggleTestCompletion('{{$test.Metadata.ID}}')"
+                                           @click.stop
+                                           class="w-6 h-6 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm font-medium text-gray-700">Complete</span>
+                                </label>
+
+                                <svg class="w-6 h-6 text-gray-400 transition-transform"
+                                     :class="{'rotate-180': expandedTests.includes('{{$test.Metadata.ID}}')}">
+                                    <path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Details -->
+                    <div x-show="expandedTests.includes('{{$test.Metadata.ID}}')"
+                         x-collapse
+                         class="border-t border-gray-200">
+
+                        <!-- Learning Objectives -->
+                        <div class="p-6 bg-green-50 border-b border-green-100">
+                            <h4 class="font-bold text-green-900 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"/>
+                                </svg>
+                                What You'll Learn
+                            </h4>
+                            <ul class="space-y-2">
+                                {{range $test.Learning.Objectives}}
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>{{.}}</span>
+                                </li>
+                                {{end}}
+                            </ul>
+
+                            {{if $test.Learning.CommonBeginnerMistakes}}
+                            <div class="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                <h5 class="font-semibold text-yellow-900 mb-2">⚠️ Common Beginner Mistakes</h5>
+                                {{range $test.Learning.CommonBeginnerMistakes}}
+                                <div class="text-sm mb-2">
+                                    <div class="font-medium text-yellow-800">❌ {{.Mistake}}</div>
+                                    <div class="text-yellow-700 ml-4 mt-1">→ {{.Consequence}}</div>
+                                    <div class="text-yellow-600 ml-4 mt-1">✅ How to avoid: {{.HowToAvoid}}</div>
+                                </div>
+                                {{end}}
+                            </div>
+                            {{end}}
+                        </div>
+
+                        <!-- Steps -->
+                        <div class="p-6">
+                            <h4 class="font-bold text-gray-900 mb-4 text-lg">📝 Steps</h4>
+
+                            {{range $stepIndex, $step := $test.TestExecution.Steps}}
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                <!-- Step Number Badge -->
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    {{$step.StepNumber}}
+                                </div>
+
+                                <!-- Step Title -->
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">{{$step.Title}}</h5>
+
+                                <!-- Learning Note -->
+                                {{if $step.LearningNote}}
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        {{$step.LearningNote}}
+                                    </div>
+                                </div>
+                                {{end}}
+
+                                <!-- Command -->
+                                {{if $step.Command}}
+                                <div class="relative group">
+                                    <button @click="copyToClipboard({{json $step.Command}}, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">{{$step.Command}}</code></pre>
+                                </div>
+                                {{end}}
+
+                                <!-- Expected Output -->
+                                {{if $step.ExpectedOutput}}
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">{{$step.ExpectedOutput}}</code>
+                                </div>
+                                {{end}}
+
+                                <!-- Why This Step -->
+                                {{if $step.WhyThisStep}}
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    {{$step.WhyThisStep}}
+                                </div>
+                                {{end}}
+
+                                <!-- Common Errors -->
+                                {{if $step.CommonErrors}}
+                                <div class="mt-3 space-y-2">
+                                    {{range $step.CommonErrors}}
+                                    <details class="bg-red-50 border border-red-200 rounded p-3">
+                                        <summary class="cursor-pointer font-medium text-red-800 text-sm">
+                                            🚨 Error: {{.Error}}
+                                        </summary>
+                                        <div class="mt-2 text-sm text-red-700 space-y-1">
+                                            <div><span class="font-semibold">Solution:</span> {{.Solution}}</div>
+                                            {{if .LearnMore}}
+                                            <div><span class="font-semibold">Learn more:</span> {{.LearnMore}}</div>
+                                            {{end}}
+                                        </div>
+                                    </details>
+                                    {{end}}
+                                </div>
+                                {{end}}
+
+                                <!-- Step Completion -->
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('{{$test.Metadata.ID}}', {{$step.StepNumber}})"
+                                           @change="toggleStepCompletion('{{$test.Metadata.ID}}', {{$step.StepNumber}})"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            {{end}}
+                        </div>
+
+                        <!-- Validation -->
+                        <div class="p-6 bg-purple-50 border-t border-purple-100">
+                            <h4 class="font-bold text-purple-900 mb-3">✅ Validation</h4>
+                            <div class="space-y-3 text-sm">
+                                <div>
+                                    <span class="font-semibold text-purple-800">Success Criteria:</span>
+                                    <ul class="mt-2 space-y-1">
+                                        {{range $test.TestExecution.Validation.SuccessCriteria}}
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>{{.}}</span>
+                                        </li>
+                                        {{end}}
+                                    </ul>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What success means:</span>
+                                    <p class="text-purple-700 mt-1">{{$test.TestExecution.Validation.WhatSuccessMeans}}</p>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What failure means:</span>
+                                    <p class="text-purple-700 mt-1">{{$test.TestExecution.Validation.WhatFailureMeans}}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Troubleshooting -->
+                        {{if $test.Troubleshooting.CommonFailures}}
+                        <div class="p-6 bg-red-50 border-t border-red-100">
+                            <h4 class="font-bold text-red-900 mb-3">🔧 Troubleshooting</h4>
+                            <div class="space-y-4">
+                                {{range $test.Troubleshooting.CommonFailures}}
+                                <details class="bg-white border border-red-200 rounded-lg p-4">
+                                    <summary class="cursor-pointer font-semibold text-red-800">
+                                        {{.Symptom}}
+                                    </summary>
+                                    <div class="mt-3 space-y-2 text-sm">
+                                        <div><span class="font-semibold">Likely cause:</span> {{.Cause}}</div>
+                                        <div>
+                                            <span class="font-semibold">Debug steps:</span>
+                                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1">
+                                                {{range .DebugSteps}}
+                                                <li class="text-gray-700">{{.}}</li>
+                                                {{end}}
+                                            </ol>
+                                        </div>
+                                        <div><span class="font-semibold">Fix:</span> {{.Fix}}</div>
+                                        <div><span class="font-semibold">Prevention:</span> {{.Prevention}}</div>
+                                    </div>
+                                </details>
+                                {{end}}
+                            </div>
+                        </div>
+                        {{end}}
+
+                        <!-- Next Steps -->
+                        <div class="p-6 bg-gray-50 border-t border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-3">🎯 Next Steps</h4>
+                            <div class="text-sm text-gray-700 mb-4">{{$test.NextSteps.OnSuccess}}</div>
+
+                            {{if $test.NextSteps.BonusExploration}}
+                            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                                <h5 class="font-semibold text-gray-800 mb-2">🌟 Bonus Exploration</h5>
+                                <ul class="space-y-1">
+                                    {{range $test.NextSteps.BonusExploration}}
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>{{.}}</span>
+                                    </li>
+                                    {{end}}
+                                </ul>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                </div>
+            {{end}}
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-12 text-center text-gray-600 text-sm pb-8">
+            <p>Generated from RHOBS Test Plan v{{.Metadata.Version}} • {{.Metadata.Date}}</p>
+            <p class="mt-2">Progress is saved in your browser's local storage</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Alpine.js app
+        function testPlanApp() {
+            return {
+                searchTerm: '',
+                difficultyFilter: '',
+                expandedTests: [],
+                completedTests: [],
+                completedSteps: {},
+                progressPercentage: 0,
+
+                init() {
+                    // Load progress from localStorage
+                    this.loadProgress();
+                    this.calculateProgress();
+
+                    // Initialize syntax highlighting
+                    setTimeout(() => {
+                        document.querySelectorAll('pre code').forEach((block) => {
+                            hljs.highlightElement(block);
+                        });
+                    }, 100);
+                },
+
+                filterTest(test) {
+                    // Filter by difficulty
+                    if (this.difficultyFilter && test.metadata.difficulty !== this.difficultyFilter) {
+                        return false;
+                    }
+
+                    // Filter by search term
+                    if (this.searchTerm) {
+                        const term = this.searchTerm.toLowerCase();
+                        const searchableText = [
+                            test.metadata.title,
+                            test.test_execution.objective,
+                            test.learning.objectives.join(' '),
+                            test.test_execution.steps.map(s => s.title + ' ' + s.learning_note).join(' ')
+                        ].join(' ').toLowerCase();
+
+                        return searchableText.includes(term);
+                    }
+
+                    return true;
+                },
+
+                toggleTest(testId) {
+                    const index = this.expandedTests.indexOf(testId);
+                    if (index > -1) {
+                        this.expandedTests.splice(index, 1);
+                    } else {
+                        this.expandedTests.push(testId);
+                    }
+                },
+
+                expandAll() {
+                    this.expandedTests = {{json .LearningPath.Sequence}};
+                },
+
+                collapseAll() {
+                    this.expandedTests = [];
+                },
+
+                isTestCompleted(testId) {
+                    return this.completedTests.includes(testId);
+                },
+
+                toggleTestCompletion(testId) {
+                    const index = this.completedTests.indexOf(testId);
+                    if (index > -1) {
+                        this.completedTests.splice(index, 1);
+                    } else {
+                        this.completedTests.push(testId);
+                    }
+                    this.saveProgress();
+                    this.calculateProgress();
+                },
+
+                isStepCompleted(testId, stepNumber) {
+                    const key = `${testId}-${stepNumber}`;
+                    return this.completedSteps[key] === true;
+                },
+
+                toggleStepCompletion(testId, stepNumber) {
+                    const key = `${testId}-${stepNumber}`;
+                    this.completedSteps[key] = !this.completedSteps[key];
+                    this.saveProgress();
+                    this.calculateProgress();
+                },
+
+                getTestCardClass(testId) {
+                    if (this.completedTests.includes(testId)) {
+                        return 'border-green-500 bg-green-50';
+                    }
+                    if (this.expandedTests.includes(testId)) {
+                        return 'border-blue-500';
+                    }
+                    return 'border-gray-200';
+                },
+
+                calculateProgress() {
+                    const totalTests = {{len .TestCases}};
+                    const completedCount = this.completedTests.length;
+                    this.progressPercentage = totalTests > 0 ? (completedCount / totalTests) * 100 : 0;
+                },
+
+                saveProgress() {
+                    const progress = {
+                        completedTests: this.completedTests,
+                        completedSteps: this.completedSteps,
+                        lastUpdated: new Date().toISOString()
+                    };
+                    localStorage.setItem('rhobs_testplan_progress', JSON.stringify(progress));
+                },
+
+                loadProgress() {
+                    const saved = localStorage.getItem('rhobs_testplan_progress');
+                    if (saved) {
+                        try {
+                            const progress = JSON.parse(saved);
+                            this.completedTests = progress.completedTests || [];
+                            this.completedSteps = progress.completedSteps || {};
+                        } catch (e) {
+                            console.error('Error loading progress:', e);
+                        }
+                    }
+                },
+
+                resetProgress() {
+                    if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+                        this.completedTests = [];
+                        this.completedSteps = {};
+                        this.saveProgress();
+                        this.calculateProgress();
+                    }
+                },
+
+                copyToClipboard(text, event) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        const button = event.target;
+                        const originalText = button.textContent;
+                        button.textContent = 'Copied!';
+                        button.classList.add('bg-green-600');
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                            button.classList.remove('bg-green-600');
+                        }, 2000);
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
