@@ -108,8 +108,8 @@
 
         <!-- Controls -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-6 no-print">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-
+            <!-- Primary Filters -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <!-- Search -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
@@ -131,24 +131,105 @@
                     </select>
                 </div>
 
-                <!-- View Mode -->
+                <!-- Production Safety Filter -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">View Mode</label>
-                    <div class="flex gap-2">
-                        <button @click="expandAll()"
-                                class="flex-1 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition">
-                            Expand All
-                        </button>
-                        <button @click="collapseAll()"
-                                class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
-                            Collapse All
-                        </button>
-                        <button @click="resetProgress()"
-                                class="flex-1 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition">
-                            Reset Progress
-                        </button>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Production Safety</label>
+                    <select x-model="productionSafetyFilter"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Tests</option>
+                        <option value="production-safe">✅ Production Safe Only</option>
+                        <option value="test-only">⚠️ Test Environment Only</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Advanced Filters -->
+            <details class="mb-4">
+                <summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 mb-2">
+                    🔍 Advanced Filters (Test Type, Impact, RBAC, Input Validation)
+                </summary>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+                    <!-- Test Type Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Test Type</label>
+                        <select x-model="testTypeFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All Types</option>
+                            <option value="setup">Setup</option>
+                            <option value="install">Install</option>
+                            <option value="validation">Validation</option>
+                            <option value="negative">Negative Testing</option>
+                            <option value="load">Load Testing</option>
+                            <option value="performance">Performance</option>
+                            <option value="security">Security</option>
+                            <option value="rbac">RBAC</option>
+                            <option value="network">Network</option>
+                            <option value="cleanup">Cleanup</option>
+                        </select>
+                    </div>
+
+                    <!-- Impact Type Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Impact Type</label>
+                        <select x-model="impactTypeFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All Impact Types</option>
+                            <option value="read-only">👁️ Read-Only</option>
+                            <option value="modifies-state">✏️ Modifies State</option>
+                            <option value="destructive">🚨 Destructive</option>
+                            <option value="impairment">⚡ Impairment</option>
+                            <option value="load-generation">🔥 Load Generation</option>
+                        </select>
+                    </div>
+
+                    <!-- RBAC Level Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">RBAC Level</label>
+                        <select x-model="rbacLevelFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All RBAC Levels</option>
+                            <option value="cluster-admin">Cluster Admin</option>
+                            <option value="namespace-admin">Namespace Admin</option>
+                            <option value="edit">Edit</option>
+                            <option value="view">View Only</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <!-- Input Validation Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Input Validation</label>
+                        <select x-model="inputValidationFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All Input Types</option>
+                            <option value="positive">✅ Positive (Valid)</option>
+                            <option value="negative">❌ Negative (Invalid)</option>
+                            <option value="missing">⚠️ Missing Attributes</option>
+                            <option value="corrupt">💥 Corrupt Data</option>
+                            <option value="boundary">📊 Boundary Values</option>
+                        </select>
                     </div>
                 </div>
+            </details>
+
+            <!-- View Mode Controls -->
+            <div class="flex gap-2 justify-end">
+                <button @click="expandAll()"
+                        class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm">
+                    Expand All
+                </button>
+                <button @click="collapseAll()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm">
+                    Collapse All
+                </button>
+                <button @click="clearFilters()"
+                        class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition text-sm">
+                    Clear Filters
+                </button>
+                <button @click="resetProgress()"
+                        class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm">
+                    Reset Progress
+                </button>
             </div>
         </div>
 
@@ -451,7 +532,195 @@
                             {{end}}
                         </div>
 
-                        <!-- Steps -->
+                        <!-- Child Test Cases (new format) -->
+                        {{if $test.TestExecution.ChildTests}}
+                        <div class="p-6">
+                            <h4 class="font-bold text-gray-900 mb-4 text-lg">🧪 Test Cases</h4>
+
+                            {{range $childIndex, $child := $test.TestExecution.ChildTests}}
+                            <div class="mb-6 border-2 rounded-lg p-5 relative {{if eq $child.ImpactType "read-only"}}border-green-300 bg-green-50{{else if eq $child.ImpactType "modifies-state"}}border-yellow-300 bg-yellow-50{{else if eq $child.ImpactType "destructive"}}border-red-300 bg-red-50{{else if eq $child.ImpactType "impairment"}}border-orange-300 bg-orange-50{{else if eq $child.ImpactType "load-generation"}}border-purple-300 bg-purple-50{{else}}border-blue-300 bg-blue-50{{end}}">
+
+                                <!-- Step Number Badge -->
+                                <div class="absolute -top-3 -left-3 bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center font-bold text-sm shadow-lg">
+                                    {{$child.StepNumber}}
+                                </div>
+
+                                <!-- Badges Row -->
+                                <div class="flex flex-wrap gap-2 mb-3">
+                                    <!-- Test Type Badge -->
+                                    {{if $child.TestType}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold uppercase
+                                        {{if eq $child.TestType "validation"}}bg-green-200 text-green-900
+                                        {{else if eq $child.TestType "negative"}}bg-red-200 text-red-900
+                                        {{else if eq $child.TestType "load"}}bg-purple-200 text-purple-900
+                                        {{else if eq $child.TestType "performance"}}bg-indigo-200 text-indigo-900
+                                        {{else if eq $child.TestType "security"}}bg-yellow-200 text-yellow-900
+                                        {{else if eq $child.TestType "rbac"}}bg-orange-200 text-orange-900
+                                        {{else if eq $child.TestType "network"}}bg-cyan-200 text-cyan-900
+                                        {{else if eq $child.TestType "cleanup"}}bg-gray-200 text-gray-900
+                                        {{else if eq $child.TestType "setup"}}bg-blue-200 text-blue-900
+                                        {{else if eq $child.TestType "install"}}bg-teal-200 text-teal-900
+                                        {{else}}bg-gray-200 text-gray-900{{end}}">
+                                        {{$child.TestType}}
+                                    </span>
+                                    {{end}}
+
+                                    <!-- Impact Type Badge -->
+                                    {{if $child.ImpactType}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold
+                                        {{if eq $child.ImpactType "read-only"}}bg-green-100 text-green-800
+                                        {{else if eq $child.ImpactType "modifies-state"}}bg-yellow-100 text-yellow-800
+                                        {{else if eq $child.ImpactType "destructive"}}bg-red-100 text-red-800
+                                        {{else if eq $child.ImpactType "impairment"}}bg-orange-100 text-orange-800
+                                        {{else if eq $child.ImpactType "load-generation"}}bg-purple-100 text-purple-800
+                                        {{else}}bg-gray-100 text-gray-800{{end}}">
+                                        {{if eq $child.ImpactType "read-only"}}👁️ Read-Only
+                                        {{else if eq $child.ImpactType "modifies-state"}}✏️ Modifies-State
+                                        {{else if eq $child.ImpactType "destructive"}}🚨 Destructive
+                                        {{else if eq $child.ImpactType "impairment"}}⚡ Impairment
+                                        {{else if eq $child.ImpactType "load-generation"}}🔥 Load-Gen
+                                        {{else}}{{$child.ImpactType}}{{end}}
+                                    </span>
+                                    {{end}}
+
+                                    <!-- RBAC Level Badge -->
+                                    {{if $child.RBACLevel}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                                        🔒 {{$child.RBACLevel}}
+                                    </span>
+                                    {{end}}
+
+                                    <!-- Input Validation Badge -->
+                                    {{if $child.InputValidation}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold
+                                        {{if eq $child.InputValidation "positive"}}bg-green-100 text-green-800
+                                        {{else if eq $child.InputValidation "negative"}}bg-red-100 text-red-800
+                                        {{else if eq $child.InputValidation "missing"}}bg-yellow-100 text-yellow-800
+                                        {{else if eq $child.InputValidation "corrupt"}}bg-orange-100 text-orange-800
+                                        {{else}}bg-gray-100 text-gray-800{{end}}">
+                                        {{if eq $child.InputValidation "positive"}}✅ Valid Input
+                                        {{else if eq $child.InputValidation "negative"}}❌ Invalid Input
+                                        {{else if eq $child.InputValidation "missing"}}⚠️ Missing Attrs
+                                        {{else if eq $child.InputValidation "corrupt"}}💥 Corrupt Data
+                                        {{else if eq $child.InputValidation "boundary"}}📊 Boundary
+                                        {{else}}{{$child.InputValidation}}{{end}}
+                                    </span>
+                                    {{end}}
+
+                                    <!-- Load Generation Indicator -->
+                                    {{if $child.ResourceRequirements.LoadGeneration}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+                                        ⚡ Load Generation
+                                    </span>
+                                    {{end}}
+
+                                    <!-- Network Impairment Indicator -->
+                                    {{if $child.NetworkRequirements.ImpairmentNeeded}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+                                        🌐 Network Impairment: {{$child.NetworkRequirements.ImpairmentType}}
+                                    </span>
+                                    {{end}}
+
+                                    <!-- Duration -->
+                                    {{if $child.Duration}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
+                                        ⏱️ {{$child.Duration}}
+                                    </span>
+                                    {{end}}
+                                </div>
+
+                                <!-- Step Title -->
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">{{$child.Title}}</h5>
+
+                                <!-- Learning Note -->
+                                {{if $child.LearningNote}}
+                                <div class="bg-white bg-opacity-70 border-l-4 border-blue-500 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        {{$child.LearningNote}}
+                                    </div>
+                                </div>
+                                {{end}}
+
+                                <!-- Command -->
+                                {{if $child.Command}}
+                                <div class="relative group">
+                                    <button @click="copyToClipboard({{json $child.Command}}, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">{{$child.Command}}</code></pre>
+                                </div>
+                                {{end}}
+
+                                <!-- Expected Output -->
+                                {{if $child.ExpectedOutput}}
+                                <div class="bg-white bg-opacity-70 rounded-lg p-3 mb-2 border border-gray-300">
+                                    <div class="text-xs font-semibold text-gray-600 mb-1">Expected Output:</div>
+                                    <pre class="text-sm text-gray-800 whitespace-pre-wrap">{{$child.ExpectedOutput}}</pre>
+                                </div>
+                                {{end}}
+
+                                <!-- Resource Requirements -->
+                                {{if or $child.ResourceRequirements.CPU $child.ResourceRequirements.Memory $child.ResourceRequirements.Storage}}
+                                <div class="bg-white bg-opacity-70 border border-purple-200 rounded-lg p-3 mb-2">
+                                    <div class="text-xs font-semibold text-purple-900 mb-2">📊 Resource Requirements:</div>
+                                    <div class="text-sm text-purple-800 space-y-1">
+                                        {{if $child.ResourceRequirements.CPU}}<div>CPU: {{$child.ResourceRequirements.CPU}}</div>{{end}}
+                                        {{if $child.ResourceRequirements.Memory}}<div>Memory: {{$child.ResourceRequirements.Memory}}</div>{{end}}
+                                        {{if $child.ResourceRequirements.Storage}}<div>Storage: {{$child.ResourceRequirements.Storage}}</div>{{end}}
+                                    </div>
+                                </div>
+                                {{end}}
+
+                                <!-- Network Requirements -->
+                                {{if $child.NetworkRequirements.ImpairmentNeeded}}
+                                <div class="bg-white bg-opacity-70 border border-orange-200 rounded-lg p-3 mb-2">
+                                    <div class="text-xs font-semibold text-orange-900 mb-2">🌐 Network Impairment:</div>
+                                    <div class="text-sm text-orange-800 space-y-1">
+                                        <div>Type: {{$child.NetworkRequirements.ImpairmentType}}</div>
+                                        {{if $child.NetworkRequirements.ImpairmentConfig}}<div>Config: {{$child.NetworkRequirements.ImpairmentConfig}}</div>{{end}}
+                                        {{if $child.NetworkRequirements.NetworkPolicies}}
+                                        <div>Network Policies: {{range $child.NetworkRequirements.NetworkPolicies}}{{.}} {{end}}</div>
+                                        {{end}}
+                                    </div>
+                                </div>
+                                {{end}}
+
+                                <!-- Safety Warning -->
+                                {{if not $child.Safety.CanRunInProduction}}
+                                <div class="bg-yellow-100 border border-yellow-300 rounded-lg p-3 mb-2">
+                                    <div class="text-xs font-semibold text-yellow-900">⚠️ Warning: Test Environment Only</div>
+                                    {{if $child.Safety.RequiresCleanup}}
+                                    <div class="text-xs text-yellow-800 mt-1">Cleanup required: {{$child.Safety.CleanupProcedure}}</div>
+                                    {{end}}
+                                </div>
+                                {{end}}
+
+                                <!-- Common Errors -->
+                                {{if $child.CommonErrors}}
+                                <details class="mt-2">
+                                    <summary class="cursor-pointer text-sm font-semibold text-gray-700">⚠️ Common Errors ({{len $child.CommonErrors}})</summary>
+                                    <div class="mt-2 space-y-2">
+                                        {{range $child.CommonErrors}}
+                                        <div class="bg-white bg-opacity-70 border border-red-200 rounded p-2 text-sm">
+                                            <div class="font-medium text-red-800">Error: {{.Error}}</div>
+                                            <div class="text-red-700 ml-2 mt-1">Solution: {{.Solution}}</div>
+                                            {{if .LearnMore}}
+                                            <a href="{{.LearnMore}}" target="_blank" class="text-blue-600 hover:underline text-xs ml-2">Learn more</a>
+                                            {{end}}
+                                        </div>
+                                        {{end}}
+                                    </div>
+                                </details>
+                                {{end}}
+                            </div>
+                            {{end}}
+                        </div>
+                        {{end}}
+
+                        <!-- Steps (legacy format) -->
+                        {{if $test.TestExecution.Steps}}
                         <div class="p-6">
                             <h4 class="font-bold text-gray-900 mb-4 text-lg">📝 Steps</h4>
 
@@ -557,6 +826,7 @@
                             </div>
                             {{end}}
                         </div>
+                        {{end}}
 
                         <!-- Validation -->
                         <div class="p-6 bg-purple-50 border-t border-purple-100">
@@ -661,6 +931,11 @@
             return {
                 searchTerm: '',
                 difficultyFilter: '',
+                productionSafetyFilter: '',
+                testTypeFilter: '',
+                impactTypeFilter: '',
+                rbacLevelFilter: '',
+                inputValidationFilter: '',
                 expandedTests: [],
                 completedTests: [],
                 completedSteps: {},
@@ -685,20 +960,84 @@
                         return false;
                     }
 
+                    // Filter by production safety
+                    if (this.productionSafetyFilter) {
+                        const canRunInProd = test.metadata.safety.can_run_in_production;
+                        if (this.productionSafetyFilter === 'production-safe' && !canRunInProd) {
+                            return false;
+                        }
+                        if (this.productionSafetyFilter === 'test-only' && canRunInProd) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by test type (check child tests or legacy steps)
+                    if (this.testTypeFilter) {
+                        const childTests = test.test_execution.child_tests || [];
+                        const hasMatchingType = childTests.some(ct => ct.test_type === this.testTypeFilter);
+                        if (!hasMatchingType && childTests.length > 0) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by impact type
+                    if (this.impactTypeFilter) {
+                        // Check parent test impact
+                        if (test.metadata.system_impact.type !== this.impactTypeFilter) {
+                            // Also check child tests
+                            const childTests = test.test_execution.child_tests || [];
+                            const hasMatchingImpact = childTests.some(ct => ct.impact_type === this.impactTypeFilter);
+                            if (!hasMatchingImpact) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    // Filter by RBAC level
+                    if (this.rbacLevelFilter) {
+                        const childTests = test.test_execution.child_tests || [];
+                        const hasMatchingRBAC = childTests.some(ct => ct.rbac_level === this.rbacLevelFilter);
+                        if (!hasMatchingRBAC && childTests.length > 0) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by input validation type
+                    if (this.inputValidationFilter) {
+                        const childTests = test.test_execution.child_tests || [];
+                        const hasMatchingValidation = childTests.some(ct => ct.input_validation === this.inputValidationFilter);
+                        if (!hasMatchingValidation && childTests.length > 0) {
+                            return false;
+                        }
+                    }
+
                     // Filter by search term
                     if (this.searchTerm) {
                         const term = this.searchTerm.toLowerCase();
+                        const steps = test.test_execution.steps || [];
+                        const childTests = test.test_execution.child_tests || [];
                         const searchableText = [
                             test.metadata.title,
                             test.test_execution.objective,
                             test.learning.objectives.join(' '),
-                            test.test_execution.steps.map(s => s.title + ' ' + s.learning_note).join(' ')
+                            steps.map(s => s.title + ' ' + s.learning_note).join(' '),
+                            childTests.map(ct => ct.title + ' ' + ct.learning_note).join(' ')
                         ].join(' ').toLowerCase();
 
                         return searchableText.includes(term);
                     }
 
                     return true;
+                },
+
+                clearFilters() {
+                    this.searchTerm = '';
+                    this.difficultyFilter = '';
+                    this.productionSafetyFilter = '';
+                    this.testTypeFilter = '';
+                    this.impactTypeFilter = '';
+                    this.rbacLevelFilter = '';
+                    this.inputValidationFilter = '';
                 },
 
                 toggleTest(testId) {

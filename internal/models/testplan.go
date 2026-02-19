@@ -141,10 +141,13 @@ type TestExecution struct {
 	Duration       string       `json:"duration"`
 	Dependencies   []string     `json:"dependencies"`
 	Prerequisites  []string     `json:"prerequisites"`
-	Steps          []Step       `json:"steps"`
+	Steps          []Step       `json:"steps"`           // Legacy format - deprecated
+	ChildTests     []ChildTestCase `json:"child_tests"` // New format - preferred
 	Validation     Validation   `json:"validation"`
 }
 
+// Step represents a single step in a test (legacy format)
+// Deprecated: Use ChildTestCase for new test plans
 type Step struct {
 	StepNumber              int           `json:"step_number"`
 	Title                   string        `json:"title"`
@@ -155,6 +158,80 @@ type Step struct {
 	DocumentationReference  string        `json:"documentation_reference,omitempty"`
 	ManualSteps             []string      `json:"manual_steps,omitempty"`             // for visual validation
 	CommonErrors            []CommonError `json:"common_errors,omitempty"`
+}
+
+// ChildTestCase represents a single executable step with full test metadata
+// This enables filtering and categorization at the step level
+type ChildTestCase struct {
+	// Identification
+	ID           string `json:"id"`
+	ParentTestID string `json:"parent_test_id"`
+	StepNumber   int    `json:"step_number"`
+	Title        string `json:"title"`
+
+	// Filtering Metadata
+	TestType        string   `json:"test_type"`        // setup, install, cleanup, validation, negative, load, performance, security, rbac, network
+	ImpactType      string   `json:"impact_type"`      // read-only, modifies-state, destructive, impairment, load-generation
+	InputValidation string   `json:"input_validation"` // positive, negative, missing, corrupt, boundary
+	RBACLevel       string   `json:"rbac_level"`       // cluster-admin, namespace-admin, edit, view, custom
+	Tags            []string `json:"tags"`             // Additional custom tags
+
+	// Resource & Network Requirements
+	ResourceRequirements ResourceRequirements `json:"resource_requirements"`
+	NetworkRequirements  NetworkRequirements  `json:"network_requirements"`
+
+	// Execution Details
+	Command        *string  `json:"command"`
+	ExpectedOutput *string  `json:"expected_output"`
+	ManualSteps    []string `json:"manual_steps,omitempty"`
+	Duration       string   `json:"duration"`
+
+	// Educational Content
+	LearningNote           string        `json:"learning_note,omitempty"`
+	WhyThisStep            string        `json:"why_this_step,omitempty"`
+	DocumentationReference string        `json:"documentation_reference,omitempty"`
+	CommonErrors           []CommonError `json:"common_errors,omitempty"`
+
+	// Safety & Validation
+	Safety     ChildTestSafety     `json:"safety"`
+	Validation ChildTestValidation `json:"validation"`
+}
+
+// ResourceRequirements defines resource needs for a test
+type ResourceRequirements struct {
+	CPU              string `json:"cpu"`               // e.g., "100m", "2"
+	Memory           string `json:"memory"`            // e.g., "256Mi", "2Gi"
+	Storage          string `json:"storage"`           // e.g., "10Gi"
+	EphemeralStorage string `json:"ephemeral_storage"` // e.g., "1Gi"
+	LoadGeneration   bool   `json:"load_generation"`   // Requires load generation pods
+}
+
+// NetworkRequirements defines network needs for a test
+type NetworkRequirements struct {
+	Ingress          bool     `json:"ingress"`
+	Egress           bool     `json:"egress"`
+	Internal         bool     `json:"internal"`
+	External         bool     `json:"external"`
+	ImpairmentNeeded bool     `json:"impairment_needed"`
+	ImpairmentType   string   `json:"impairment_type"`   // latency, packet-loss, bandwidth-limit
+	ImpairmentConfig string   `json:"impairment_config"` // Configuration details
+	SecurityGroups   []string `json:"security_groups"`   // AWS security groups to modify
+	NetworkPolicies  []string `json:"network_policies"`  // K8s network policies to apply
+}
+
+// ChildTestSafety defines safety constraints for a single step/child test
+type ChildTestSafety struct {
+	CanRunInProduction bool   `json:"can_run_in_production"`
+	RequiresCleanup    bool   `json:"requires_cleanup"`
+	CleanupProcedure   string `json:"cleanup_procedure"`
+	RiskLevel          string `json:"risk_level"` // low, medium, high, critical
+}
+
+// ChildTestValidation defines validation criteria for a step/child test
+type ChildTestValidation struct {
+	SuccessCriteria []string `json:"success_criteria"`
+	FailureCriteria []string `json:"failure_criteria"`
+	MetricsToCollect []string `json:"metrics_to_collect"`
 }
 
 type CommonError struct {
