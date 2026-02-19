@@ -627,6 +627,763 @@ Before finalizing test plan, verify EVERY test has:
 
 **CRITICAL REQUIREMENT:** No modifies-state or destructive test should exist without its corresponding backup/cleanup tests. If you cannot create a safe cleanup test, mark the test as "manual-cleanup-required" and document the manual steps.
 
+---
+
+### Phase 7: Negative Testing Generation (30-45 minutes)
+
+**REQUIRED:** For every positive/happy-path test, generate corresponding negative test cases to validate error handling and system resilience.
+
+#### What is Negative Testing?
+
+Negative testing validates that the system correctly handles invalid inputs, error conditions, and unexpected scenarios. These tests should **expect failures** and verify appropriate error messages and system behavior.
+
+#### Generate Negative Tests For:
+
+**1. Invalid Configuration**
+For each configuration test, create a negative variant with invalid values:
+```json
+{
+  "test_create_deployment_invalid_image": {
+    "metadata": {
+      "id": "test_create_deployment_invalid_image",
+      "title": "Attempt deployment with non-existent image",
+      "category": "negative",
+      "difficulty": "beginner"
+    },
+    "test_execution": {
+      "objective": "Validate error handling when invalid image is specified",
+      "child_tests": [{
+        "id": "test_create_deployment_invalid_image_001",
+        "parent_test_id": "test_create_deployment_invalid_image",
+        "step_number": 1,
+        "title": "Apply deployment with invalid image reference",
+        "test_type": "negative",
+        "impact_type": "read-only",
+        "input_validation": "negative",
+        "rbac_level": "edit",
+        "command": "oc apply -f deployment-invalid-image.yaml",
+        "expected_output": "Error: ErrImagePull",
+        "learning_note": "Validates that Kubernetes correctly rejects invalid image references and provides clear error messages",
+        "why_this_step": "Invalid images are a common deployment error. This test ensures proper error detection.",
+        "safety": {
+          "can_run_in_production": true,
+          "requires_cleanup": false,
+          "risk_level": "low"
+        },
+        "validation": {
+          "success_criteria": ["Error message contains 'ErrImagePull' or 'ImagePullBackOff'", "Pod enters error state"],
+          "failure_criteria": ["Deployment succeeds", "No error message shown"],
+          "metrics_to_collect": []
+        }
+      }]
+    }
+  }
+}
+```
+
+**2. Permission Denials**
+Test operations without required permissions:
+```json
+{
+  "test_create_secret_insufficient_permissions": {
+    "metadata": {
+      "id": "test_create_secret_insufficient_permissions",
+      "title": "Attempt secret creation with view-only permissions",
+      "category": "negative"
+    },
+    "test_execution": {
+      "child_tests": [{
+        "id": "test_create_secret_insufficient_permissions_001",
+        "parent_test_id": "test_create_secret_insufficient_permissions",
+        "step_number": 1,
+        "title": "View user attempts to create secret",
+        "test_type": "negative",
+        "impact_type": "read-only",
+        "input_validation": "negative",
+        "rbac_level": "view",
+        "command": "oc create secret generic test --from-literal=key=value --as=view-user",
+        "expected_output": "Error from server (Forbidden): secrets is forbidden",
+        "learning_note": "Validates RBAC prevents view-only users from creating resources",
+        "safety": {
+          "can_run_in_production": true,
+          "risk_level": "low"
+        }
+      }]
+    }
+  }
+}
+```
+
+**3. Resource Conflicts**
+Test creation of duplicate resources:
+```json
+{
+  "child_tests": [{
+    "title": "Attempt to create duplicate resource",
+    "test_type": "negative",
+    "impact_type": "read-only",
+    "input_validation": "negative",
+    "command": "oc create deployment duplicate-app --image=nginx",
+    "expected_output": "Error from server (AlreadyExists)",
+    "learning_note": "Validates proper error handling for duplicate resource creation"
+  }]
+}
+```
+
+**4. Missing Dependencies**
+Test scenarios where required resources don't exist:
+```json
+{
+  "child_tests": [{
+    "title": "Create custom resource before CRD exists",
+    "test_type": "negative",
+    "impact_type": "read-only",
+    "expected_output": "Error: the server doesn't have a resource type",
+    "learning_note": "Validates dependency checking and clear error messages"
+  }]
+}
+```
+
+#### Negative Test Generation Strategy
+
+For EACH positive test, generate 2-3 negative counterparts:
+
+**Example:**
+- Positive: `test_create_pagerduty_secret` (creates secret successfully)
+- Negative 1: `test_create_pagerduty_secret_missing_key` (missing required key)
+- Negative 2: `test_create_pagerduty_secret_invalid_namespace` (non-existent namespace)
+- Negative 3: `test_create_pagerduty_secret_no_permissions` (RBAC denial)
+
+#### Negative Test Requirements
+
+All negative tests MUST:
+- Set `test_type: "negative"`
+- Set `impact_type: "read-only"` (should fail before making changes)
+- Define `expected_output` with specific error message
+- Include `learning_note` explaining why failure is expected
+- Be production-safe (`can_run_in_production: true`)
+
+---
+
+### Phase 8: Input Validation Testing (30-45 minutes)
+
+**REQUIRED:** Generate comprehensive input validation tests covering positive, negative, missing, corrupt, and boundary cases.
+
+#### Input Validation Categories
+
+**1. Positive Input Tests (`input_validation: "positive"`)**
+Valid inputs expected to succeed:
+```json
+{
+  "child_tests": [{
+    "title": "Create secret with valid key format",
+    "test_type": "validation",
+    "impact_type": "modifies-state",
+    "input_validation": "positive",
+    "rbac_level": "edit",
+    "command": "oc create secret generic pd-secret --from-literal=PAGERDUTY_KEY=abc123",
+    "expected_output": "secret/pd-secret created",
+    "learning_note": "Validates that properly formatted inputs are accepted",
+    "safety": {
+      "can_run_in_production": false,
+      "requires_cleanup": true,
+      "cleanup_procedure": "oc delete secret pd-secret"
+    }
+  }]
+}
+```
+
+**2. Negative Input Tests (`input_validation: "negative"`)**
+Invalid types, formats, or values:
+```json
+{
+  "child_tests": [{
+    "title": "Attempt secret creation with empty value",
+    "test_type": "negative",
+    "impact_type": "read-only",
+    "input_validation": "negative",
+    "command": "oc create secret generic pd-secret --from-literal=PAGERDUTY_KEY=",
+    "expected_output": "Error: data[PAGERDUTY_KEY]: Invalid value",
+    "learning_note": "Validates that empty secret values are rejected with clear error"
+  }]
+}
+```
+
+**3. Missing Attribute Tests (`input_validation: "missing"`)**
+Required fields/attributes omitted:
+```json
+{
+  "child_tests": [{
+    "title": "Deploy without required image field",
+    "test_type": "negative",
+    "impact_type": "read-only",
+    "input_validation": "missing",
+    "command": "oc apply -f deployment-no-image.yaml",
+    "expected_output": "Error: spec.template.spec.containers[0].image: Required value",
+    "learning_note": "Validates that missing required fields are caught with helpful error messages"
+  }]
+}
+```
+
+**4. Corrupt Data Tests (`input_validation: "corrupt"`)**
+Malformed YAML/JSON, invalid structure:
+```json
+{
+  "child_tests": [{
+    "title": "Apply malformed YAML configuration",
+    "test_type": "negative",
+    "impact_type": "read-only",
+    "input_validation": "corrupt",
+    "command": "oc apply -f corrupt-syntax.yaml",
+    "expected_output": "error: error parsing corrupt-syntax.yaml",
+    "learning_note": "Validates that malformed YAML is rejected with parse errors"
+  }]
+}
+```
+
+**5. Boundary Value Tests (`input_validation: "boundary"`)**
+Min/max values, limits:
+```json
+{
+  "child_tests": [{
+    "title": "Create deployment with 0 replicas (minimum boundary)",
+    "test_type": "validation",
+    "impact_type": "modifies-state",
+    "input_validation": "boundary",
+    "command": "oc create deployment test --image=nginx --replicas=0",
+    "learning_note": "Tests minimum boundary - 0 replicas should be accepted"
+  }, {
+    "title": "Create deployment with 10000 replicas (maximum boundary)",
+    "test_type": "validation",
+    "impact_type": "read-only",
+    "input_validation": "boundary",
+    "command": "oc create deployment test --image=nginx --replicas=10000",
+    "expected_output": "Error: replicas exceeds maximum",
+    "learning_note": "Tests maximum boundary - excessively high replicas should be rejected"
+  }]
+}
+```
+
+#### Input Validation Matrix
+
+For EACH input field/parameter, generate tests covering:
+
+| Input | Positive | Negative | Missing | Corrupt | Boundary |
+|-------|----------|----------|---------|---------|----------|
+| image | ✓ Valid ref | ✓ Non-existent | ✓ No field | ✓ Malformed | N/A |
+| replicas | ✓ Valid num | ✓ Negative | ✓ No replicas | ✓ String | ✓ 0, 10000 |
+| namespace | ✓ Exists | ✓ Non-existent | ✓ No ns | ✓ Invalid chars | ✓ 63-char |
+
+---
+
+### Phase 9: RBAC and Permission Testing (30-45 minutes)
+
+**REQUIRED:** Generate tests to validate role-based access control and security boundaries.
+
+#### RBAC Test Generation Rules
+
+For EACH operation, determine minimum required RBAC level and generate:
+1. Positive test with correct permissions
+2. Negative test with insufficient permissions
+
+#### RBAC Level Categories
+
+**1. Cluster-Admin Operations (`rbac_level: "cluster-admin"`)**
+Cluster-scoped resources (CRDs, ClusterRoles, Nodes):
+```json
+{
+  "child_tests": [{
+    "title": "Create CustomResourceDefinition",
+    "test_type": "rbac",
+    "impact_type": "modifies-state",
+    "rbac_level": "cluster-admin",
+    "command": "oc apply -f mycrd.yaml",
+    "expected_output": "customresourcedefinition.apiextensions.k8s.io/mycrds.example.com created",
+    "learning_note": "CRD creation requires cluster-admin permissions as it's cluster-scoped",
+    "safety": {
+      "can_run_in_production": false,
+      "requires_cleanup": true,
+      "cleanup_procedure": "oc delete crd mycrds.example.com",
+      "risk_level": "high"
+    }
+  }]
+}
+```
+
+**2. Namespace-Admin Operations (`rbac_level: "namespace-admin"`)**
+Namespace-scoped admin operations (Roles, RoleBindings):
+```json
+{
+  "child_tests": [{
+    "title": "Create Role in namespace",
+    "test_type": "rbac",
+    "impact_type": "modifies-state",
+    "rbac_level": "namespace-admin",
+    "command": "oc create role pod-reader --verb=get,list --resource=pods -n test-ns",
+    "safety": {
+      "can_run_in_production": false,
+      "requires_cleanup": true
+    }
+  }]
+}
+```
+
+**3. Edit Permissions (`rbac_level: "edit"`)**
+Standard resource creation/modification:
+```json
+{
+  "child_tests": [{
+    "title": "Create deployment",
+    "test_type": "install",
+    "impact_type": "modifies-state",
+    "rbac_level": "edit",
+    "command": "oc create deployment nginx --image=nginx -n test-ns"
+  }]
+}
+```
+
+**4. View-Only Operations (`rbac_level: "view"`)**
+Read-only operations:
+```json
+{
+  "child_tests": [{
+    "title": "List pods in namespace",
+    "test_type": "validation",
+    "impact_type": "read-only",
+    "rbac_level": "view",
+    "command": "oc get pods -n test-ns",
+    "safety": {
+      "can_run_in_production": true,
+      "risk_level": "low"
+    }
+  }]
+}
+```
+
+**5. Permission Denial Tests**
+Validate RBAC enforcement:
+```json
+{
+  "test_create_deployment_as_viewer": {
+    "metadata": {
+      "title": "Attempt deployment creation as view-only user",
+      "category": "negative"
+    },
+    "test_execution": {
+      "child_tests": [{
+        "title": "View user attempts deployment creation",
+        "test_type": "negative",
+        "impact_type": "read-only",
+        "rbac_level": "view",
+        "command": "oc create deployment nginx --image=nginx --as=view-user",
+        "expected_output": "Error from server (Forbidden)",
+        "learning_note": "Validates RBAC prevents view users from creating resources"
+      }]
+    }
+  }
+}
+```
+
+#### RBAC Test Requirements
+
+All RBAC tests MUST:
+- Set `rbac_level` to minimum required permission
+- For negative tests: use lower permission level + expect Forbidden error
+- Document why specific permission level is needed
+- Test service account permissions if operator uses them
+
+---
+
+### Phase 10: Load and Performance Testing (45-60 minutes)
+
+**REQUIRED:** Generate tests to validate system behavior under load and resource constraints.
+
+#### Load Testing Categories
+
+**1. Resource Limit Tests (`test_type: "load"`)**
+Test behavior when hitting resource limits:
+```json
+{
+  "test_pod_with_low_memory": {
+    "metadata": {
+      "title": "Deploy pod with insufficient memory limits",
+      "category": "load"
+    },
+    "test_execution": {
+      "child_tests": [{
+        "title": "Create pod with memory limit too low for application",
+        "test_type": "load",
+        "impact_type": "modifies-state",
+        "resource_requirements": {
+          "cpu": "100m",
+          "memory": "50Mi"
+        },
+        "command": "oc apply -f pod-low-memory.yaml",
+        "learning_note": "Tests pod behavior when memory limit is insufficient - pod should be OOMKilled",
+        "safety": {
+          "can_run_in_production": false,
+          "requires_cleanup": true,
+          "cleanup_procedure": "oc delete pod low-memory-pod",
+          "risk_level": "medium"
+        }
+      }]
+    }
+  }
+}
+```
+
+**2. Load Generation Tests (`impact_type: "load-generation"`)**
+Deploy pods that generate load:
+```json
+{
+  "test_operator_under_cpu_stress": {
+    "metadata": {
+      "title": "Test operator reconciliation under CPU stress",
+      "category": "load"
+    },
+    "test_execution": {
+      "child_tests": [{
+        "id": "cpu_stress_deploy",
+        "title": "Deploy CPU stress pods",
+        "test_type": "load",
+        "impact_type": "load-generation",
+        "resource_requirements": {
+          "cpu": "2",
+          "memory": "512Mi",
+          "load_generation": true
+        },
+        "command": "oc apply -f cpu-stress-deployment.yaml",
+        "learning_note": "Deploys pods using stress-ng to consume CPU. Tests operator behavior under resource pressure.",
+        "why_this_step": "Operators should continue functioning even when cluster resources are constrained",
+        "safety": {
+          "can_run_in_production": false,
+          "requires_cleanup": true,
+          "cleanup_procedure": "oc delete -f cpu-stress-deployment.yaml",
+          "risk_level": "medium"
+        }
+      }, {
+        "id": "cpu_stress_verify",
+        "title": "Verify operator reconciles under load",
+        "test_type": "validation",
+        "impact_type": "read-only",
+        "command": "oc get customresource -w",
+        "duration": "5 minutes",
+        "learning_note": "Validates operator continues processing reconciliation loops despite CPU stress"
+      }, {
+        "id": "cpu_stress_cleanup",
+        "title": "Remove stress pods",
+        "test_type": "cleanup",
+        "impact_type": "modifies-state",
+        "command": "oc delete -f cpu-stress-deployment.yaml"
+      }]
+    }
+  }
+}
+```
+
+**3. Performance Testing (`test_type: "performance"`)**
+Measure and validate performance metrics:
+```json
+{
+  "child_tests": [{
+    "title": "Measure API response time",
+    "test_type": "performance",
+    "impact_type": "read-only",
+    "command": "time curl -s http://api-service/health",
+    "learning_note": "Measures API response latency to establish performance baseline",
+    "validation": {
+      "success_criteria": ["Response time < 100ms", "Status code 200"],
+      "metrics_to_collect": ["response_time_ms", "status_code"]
+    }
+  }]
+}
+```
+
+#### Load Test Deployment Examples
+
+**CPU Stress:**
+```yaml
+# cpu-stress-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-stress
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: stress
+        image: polinux/stress
+        args: ["--cpu", "2", "--timeout", "300s"]
+        resources:
+          requests:
+            cpu: "2"
+            memory: "512Mi"
+```
+
+**Memory Stress:**
+```yaml
+# memory-stress-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-stress
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: stress
+        image: polinux/stress
+        args: ["--vm", "2", "--vm-bytes", "1G", "--timeout", "300s"]
+        resources:
+          requests:
+            memory: "2Gi"
+```
+
+---
+
+### Phase 11: Network Testing with Impairment (45-60 minutes)
+
+**REQUIRED:** Generate tests to validate system behavior under network stress and impairment.
+
+#### Network Testing Categories
+
+**1. Network Policy Tests (`test_type: "network", `impairment_type: "network-policy"`)**
+Restrict traffic using Kubernetes NetworkPolicy:
+```json
+{
+  "test_app_with_deny_all_policy": {
+    "metadata": {
+      "title": "Test application with deny-all network policy",
+      "category": "network"
+    },
+    "test_execution": {
+      "child_tests": [{
+        "id": "network_apply_deny",
+        "title": "Apply deny-all network policy",
+        "test_type": "network",
+        "impact_type": "impairment",
+        "network_requirements": {
+          "impairment_needed": true,
+          "impairment_type": "network-policy",
+          "impairment_config": "Deny all ingress and egress traffic",
+          "network_policies": ["deny-all-policy.yaml"]
+        },
+        "command": "oc apply -f deny-all-network-policy.yaml",
+        "learning_note": "Applies NetworkPolicy denying all traffic to test isolation behavior",
+        "why_this_step": "Network policies can accidentally block critical traffic - tests resilience",
+        "safety": {
+          "can_run_in_production": false,
+          "requires_cleanup": true,
+          "cleanup_procedure": "oc delete networkpolicy deny-all",
+          "risk_level": "high"
+        }
+      }, {
+        "id": "network_verify_blocked",
+        "title": "Verify traffic is blocked",
+        "test_type": "validation",
+        "impact_type": "read-only",
+        "command": "oc exec test-pod -- curl --max-time 5 http://service",
+        "expected_output": "curl: (28) Connection timed out",
+        "learning_note": "Confirms network policy is enforced - connection should timeout"
+      }, {
+        "id": "network_cleanup",
+        "title": "Remove network policy",
+        "test_type": "cleanup",
+        "impact_type": "modifies-state",
+        "command": "oc delete networkpolicy deny-all",
+        "learning_note": "Restores normal network connectivity"
+      }]
+    }
+  }
+}
+```
+
+**2. Latency Injection Tests (`impairment_type: "latency"`)**
+Add artificial network latency:
+```json
+{
+  "test_api_with_latency": {
+    "metadata": {
+      "title": "Test API with 100ms network latency",
+      "category": "network"
+    },
+    "test_execution": {
+      "child_tests": [{
+        "title": "Inject 100ms latency",
+        "test_type": "network",
+        "impact_type": "impairment",
+        "network_requirements": {
+          "impairment_needed": true,
+          "impairment_type": "latency",
+          "impairment_config": "100ms delay on eth0"
+        },
+        "manual_steps": [
+          "Deploy privileged debug pod with tc utilities",
+          "Run: tc qdisc add dev eth0 root netem delay 100ms",
+          "Verify: ping shows ~100ms increase in RTT"
+        ],
+        "learning_note": "Uses Linux tc (traffic control) to add network latency",
+        "safety": {
+          "can_run_in_production": false,
+          "requires_cleanup": true,
+          "cleanup_procedure": "tc qdisc del dev eth0 root",
+          "risk_level": "critical"
+        }
+      }, {
+        "title": "Verify application handles latency",
+        "test_type": "validation",
+        "impact_type": "read-only",
+        "command": "curl http://api-service/health",
+        "learning_note": "Tests if application remains functional with degraded network"
+      }]
+    }
+  }
+}
+```
+
+**3. Packet Loss Tests (`impairment_type: "packet-loss"`)**
+Simulate packet loss:
+```json
+{
+  "network_requirements": {
+    "impairment_needed": true,
+    "impairment_type": "packet-loss",
+    "impairment_config": "10% packet loss"
+  },
+  "manual_steps": [
+    "tc qdisc add dev eth0 root netem loss 10%",
+    "Verify with: ping -c 100 <target> (should show ~10% loss)"
+  ]
+}
+```
+
+**4. AWS Security Group Tests (platform-specific)**
+Temporarily block traffic via security groups:
+```json
+{
+  "child_tests": [{
+    "title": "Block ingress via security group",
+    "test_type": "network",
+    "impact_type": "impairment",
+    "network_requirements": {
+      "impairment_needed": true,
+      "impairment_type": "security-group-deny",
+      "security_groups": ["sg-abc123"]
+    },
+    "command": "aws ec2 revoke-security-group-ingress --group-id sg-abc123 --protocol tcp --port 443 --cidr 0.0.0.0/0",
+    "learning_note": "Removes security group rule to simulate network partition",
+    "safety": {
+      "can_run_in_production": false,
+      "requires_cleanup": true,
+      "cleanup_procedure": "aws ec2 authorize-security-group-ingress --group-id sg-abc123 --protocol tcp --port 443 --cidr 0.0.0.0/0",
+      "risk_level": "critical"
+    }
+  }]
+}
+```
+
+#### Network Policy Example
+
+**Deny-All NetworkPolicy:**
+```yaml
+# deny-all-network-policy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+  namespace: test-namespace
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+```
+
+#### Network Impairment Commands
+
+**Latency:**
+```bash
+# Add 100ms latency
+tc qdisc add dev eth0 root netem delay 100ms
+
+# Add 50ms ± 10ms variance
+tc qdisc add dev eth0 root netem delay 50ms 10ms
+
+# Remove
+tc qdisc del dev eth0 root
+```
+
+**Packet Loss:**
+```bash
+# Add 10% packet loss
+tc qdisc add dev eth0 root netem loss 10%
+
+# Remove
+tc qdisc del dev eth0 root
+```
+
+#### Network Testing Safety Requirements
+
+ALL network impairment tests MUST:
+- Set `can_run_in_production: false`
+- Set `risk_level: "high"` or `"critical"`
+- Define `cleanup_procedure` in detail
+- Test cleanup procedure before marking complete
+- Document affected services/pods to limit blast radius
+- Include verification step after cleanup
+
+---
+
+### Phase 12: Test Generation Summary
+
+After generating all test types, create a summary showing coverage:
+
+```json
+{
+  "test_generation_summary": {
+    "total_tests_generated": 87,
+    "by_test_type": {
+      "validation": 25,
+      "negative": 18,
+      "install": 12,
+      "rbac": 10,
+      "load": 8,
+      "network": 6,
+      "cleanup": 8
+    },
+    "by_impact_type": {
+      "read-only": 45,
+      "modifies-state": 32,
+      "destructive": 2,
+      "impairment": 6,
+      "load-generation": 2
+    },
+    "by_rbac_level": {
+      "view": 30,
+      "edit": 25,
+      "namespace-admin": 15,
+      "cluster-admin": 10,
+      "custom": 7
+    },
+    "input_validation_coverage": {
+      "positive": 40,
+      "negative": 18,
+      "missing": 12,
+      "corrupt": 8,
+      "boundary": 9
+    },
+    "production_safe_tests": 45,
+    "test_environment_only": 42,
+    "cleanup_coverage": "100%"
+  }
+}
+```
+
+---
+
 ## Output Format
 
 Generate test plan JSON following the schema in `.claude/templates/testplan-template.json` with these key sections:
@@ -745,6 +1502,30 @@ Before finalizing test plan:
 - [ ] Integration points tested
 - [ ] Configuration options validated
 
+**Comprehensive Testing (NEW):**
+- [ ] Negative tests generated for each positive test (30-40% ratio)
+- [ ] Input validation tests cover: positive, negative, missing, corrupt, boundary
+- [ ] RBAC tests validate all permission boundaries
+- [ ] Load tests for performance-critical components
+- [ ] Network tests for distributed systems
+- [ ] All tests use child_tests format (not legacy steps)
+
+**Test Type Distribution:**
+- [ ] Validation tests (read-only verification)
+- [ ] Negative tests (error handling)
+- [ ] RBAC tests (permission boundaries)
+- [ ] Load tests (resource constraints)
+- [ ] Network tests (impairment scenarios)
+- [ ] Setup/Install/Cleanup tests (lifecycle)
+
+**Filterable Attributes:**
+- [ ] Every child test has test_type assigned
+- [ ] Every child test has impact_type assigned
+- [ ] RBAC-sensitive tests have rbac_level assigned
+- [ ] Input validation tests have input_validation assigned
+- [ ] Load tests have resource_requirements defined
+- [ ] Network tests have network_requirements defined
+
 **Environment Variants:**
 - [ ] Cloud provider variations documented
 - [ ] Cluster configuration variants included
@@ -812,6 +1593,12 @@ Coverage goals:
 - Consider failure scenarios, not just happy paths
 - Think about different user personas and their workflows
 - Include performance and scale considerations
+- **Use child_tests format** for all new tests (not legacy steps)
+- **Generate negative tests** for every positive test (30-40% ratio)
+- **Validate all inputs** with positive/negative/missing/corrupt/boundary tests
+- **Test RBAC boundaries** with both allowed and denied operations
+- **Include load tests** for performance-critical components
+- **Test network resilience** with impairment scenarios
 
 **Don't:**
 - Skip environment variants to save time (they're critical)
@@ -821,14 +1608,45 @@ Coverage goals:
 - Create tests without clear validation criteria
 - Generate tests for unsupported configurations
 - Duplicate tests unnecessarily
+- **Use legacy steps format** (use child_tests instead)
+- **Skip negative tests** (they're required, not optional)
+- **Forget cleanup tests** for modifying operations
+- **Omit filterable attributes** (test_type, impact_type, rbac_level, etc.)
+- **Create load/network tests** without cleanup procedures
 
 ## Success Metrics
 
 A successful test plan generation includes:
+
+**Coverage Metrics:**
 - **70%+ coverage** of documented features
 - **3+ environment variants** for each critical test
-- **Negative tests** for all user inputs
+- **30-40% negative tests** relative to positive tests
+- **100% input validation coverage** for all inputs
 - **Integration tests** for all external dependencies
 - **Documented gaps** with recommendations
 - **Executable tests** with clear validation criteria
 - **Realistic time estimates** based on complexity
+
+**Test Type Distribution (Target for 50 tests):**
+- 20 validation tests (40%)
+- 10 negative tests (20%)
+- 8 input validation tests (16%)
+- 5 RBAC tests (10%)
+- 4 load tests (8%)
+- 3 network tests (6%)
+- 5 cleanup tests (10%)
+
+**Quality Indicators:**
+- **All modifying tests** have cleanup tests
+- **All negative tests** define expected error messages
+- **All RBAC tests** specify minimum required permission level
+- **All load tests** define resource requirements
+- **All network tests** define impairment type and cleanup procedure
+- **100% production safety** classification (can_run_in_production flag set)
+
+**New Format Adoption:**
+- **100% of tests** use child_tests format (not legacy steps)
+- **Every child test** has filterable attributes (test_type, impact_type, etc.)
+- **All resource-intensive tests** have resource_requirements defined
+- **All network tests** have network_requirements defined
