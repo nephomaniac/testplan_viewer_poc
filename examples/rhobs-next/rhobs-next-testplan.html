@@ -94,12 +94,65 @@
     <div class="bg-white border-b sticky top-0 z-40 shadow-sm no-print">
         <div class="container mx-auto px-6 py-4">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-medium text-gray-700">Your Progress</span>
-                <span class="text-sm text-gray-600" x-text="Math.round(progressPercentage) + '%'"></span>
+                <span class="text-sm font-medium text-gray-700">Test Execution Progress</span>
+                <span class="text-sm text-gray-600" x-show="testStats" x-text="testStats.passed + ' / ' + testStats.total + ' passed (' + Math.round(progressPercentage) + '%)'"></span>
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-3">
-                <div class="bg-blue-600 h-3 rounded-full transition-all duration-500"
-                     :style="'width: ' + progressPercentage + '%'"></div>
+
+            
+            <div class="w-full bg-gray-200 rounded-full h-3 flex overflow-hidden">
+                <div x-show="testStats && testStats.passed > 0"
+                     :style="'width: ' + (testStats.passed / testStats.total * 100) + '%'"
+                     class="bg-green-600 h-3"
+                     :title="testStats.passed + ' Passed'">
+                </div>
+                <div x-show="testStats && testStats.failed > 0"
+                     :style="'width: ' + (testStats.failed / testStats.total * 100) + '%'"
+                     class="bg-red-600 h-3"
+                     :title="testStats.failed + ' Failed'">
+                </div>
+                <div x-show="testStats && testStats.inProgress > 0"
+                     :style="'width: ' + (testStats.inProgress / testStats.total * 100) + '%'"
+                     class="bg-blue-600 h-3"
+                     :title="testStats.inProgress + ' In Progress'">
+                </div>
+                <div x-show="testStats && testStats.blocked > 0"
+                     :style="'width: ' + (testStats.blocked / testStats.total * 100) + '%'"
+                     class="bg-orange-600 h-3"
+                     :title="testStats.blocked + ' Blocked'">
+                </div>
+                <div x-show="testStats && testStats.skipped > 0"
+                     :style="'width: ' + (testStats.skipped / testStats.total * 100) + '%'"
+                     class="bg-purple-600 h-3"
+                     :title="testStats.skipped + ' Skipped'">
+                </div>
+            </div>
+
+            
+            <div class="flex gap-3 mt-2 text-xs flex-wrap" x-show="testStats">
+                <span x-show="testStats.passed > 0" class="flex items-center gap-1">
+                    <span class="w-3 h-3 bg-green-600 rounded"></span>
+                    <span x-text="testStats.passed + ' Passed'"></span>
+                </span>
+                <span x-show="testStats.failed > 0" class="flex items-center gap-1">
+                    <span class="w-3 h-3 bg-red-600 rounded"></span>
+                    <span x-text="testStats.failed + ' Failed'"></span>
+                </span>
+                <span x-show="testStats.inProgress > 0" class="flex items-center gap-1">
+                    <span class="w-3 h-3 bg-blue-600 rounded"></span>
+                    <span x-text="testStats.inProgress + ' In Progress'"></span>
+                </span>
+                <span x-show="testStats.blocked > 0" class="flex items-center gap-1">
+                    <span class="w-3 h-3 bg-orange-600 rounded"></span>
+                    <span x-text="testStats.blocked + ' Blocked'"></span>
+                </span>
+                <span x-show="testStats.skipped > 0" class="flex items-center gap-1">
+                    <span class="w-3 h-3 bg-purple-600 rounded"></span>
+                    <span x-text="testStats.skipped + ' Skipped'"></span>
+                </span>
+                <span x-show="testStats.notStarted > 0" class="flex items-center gap-1 text-gray-500">
+                    <span class="w-3 h-3 bg-gray-300 rounded"></span>
+                    <span x-text="testStats.notStarted + ' Not Started'"></span>
+                </span>
             </div>
         </div>
     </div>
@@ -213,7 +266,7 @@
             </details>
 
             
-            <div class="flex gap-2 justify-end">
+            <div class="flex gap-2 justify-end flex-wrap">
                 <button @click="expandAll()"
                         class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm">
                     Expand All
@@ -226,9 +279,20 @@
                         class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition text-sm">
                     Clear Filters
                 </button>
+                <button @click="exportTestData()"
+                        class="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition text-sm">
+                    📥 Export Test Data
+                </button>
+                <label class="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition text-sm cursor-pointer">
+                    📤 Import Test Data
+                    <input type="file"
+                           @change="importTestData($event)"
+                           accept=".json"
+                           class="hidden">
+                </label>
                 <button @click="resetProgress()"
                         class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm">
-                    Reset Progress
+                    Reset All Data
                 </button>
             </div>
         </div>
@@ -473,6 +537,15 @@
 
                                     
                                     
+
+                                    
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium text-gray-600">Status:</span>
+                                        <span x-text="getStatusLabel('test_verify_route_monitor_deployment')"
+                                              :class="getStatusBadgeClass('test_verify_route_monitor_deployment')"
+                                              class="px-3 py-1 rounded-full text-xs font-semibold">
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -561,6 +634,50 @@
                             </div>
                         </div>
                         
+
+                        
+                        <div class="p-6 bg-gray-50 border-b border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-4 flex items-center">
+                                📝 Test Notes & Status
+                            </h4>
+
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Status
+                                </label>
+                                <select :value="getTestStatus('test_verify_route_monitor_deployment')"
+                                        @change="setTestStatus('test_verify_route_monitor_deployment', $event.target.value)"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="not-started">⚪ Not Started</option>
+                                    <option value="in-progress">🔵 In Progress</option>
+                                    <option value="passed">✅ Passed</option>
+                                    <option value="failed">❌ Failed</option>
+                                    <option value="blocked">🚫 Blocked</option>
+                                    <option value="skipped">⏭️ Skipped</option>
+                                </select>
+                            </div>
+
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Notes
+                                    <span class="text-xs text-gray-500 font-normal ml-2"
+                                          x-show="getTestTimestamp('test_verify_route_monitor_deployment')"
+                                          x-text="'(Last updated: ' + formatTimestamp(getTestTimestamp('test_verify_route_monitor_deployment')) + ')'">
+                                    </span>
+                                </label>
+                                <textarea :value="getTestNote('test_verify_route_monitor_deployment')"
+                                          @blur="setTestNote('test_verify_route_monitor_deployment', $event.target.value)"
+                                          rows="6"
+                                          placeholder="Record observations, issues encountered, environment details, commands executed, or any relevant notes about this test execution..."
+                                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                </textarea>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    💡 Notes auto-save when you click outside the text area. Export your data to save permanently.
+                                </p>
+                            </div>
+                        </div>
 
                         
                         <div class="p-6 bg-green-50 border-b border-green-100">
@@ -1239,6 +1356,15 @@ openshift-console console-monitor 5d</code>
 
                                     
                                     
+
+                                    
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium text-gray-600">Status:</span>
+                                        <span x-text="getStatusLabel('test_create_routemonitor_cr')"
+                                              :class="getStatusBadgeClass('test_create_routemonitor_cr')"
+                                              class="px-3 py-1 rounded-full text-xs font-semibold">
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1367,6 +1493,50 @@ openshift-console console-monitor 5d</code>
                             </div>
                         </div>
                         
+
+                        
+                        <div class="p-6 bg-gray-50 border-b border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-4 flex items-center">
+                                📝 Test Notes & Status
+                            </h4>
+
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Status
+                                </label>
+                                <select :value="getTestStatus('test_create_routemonitor_cr')"
+                                        @change="setTestStatus('test_create_routemonitor_cr', $event.target.value)"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="not-started">⚪ Not Started</option>
+                                    <option value="in-progress">🔵 In Progress</option>
+                                    <option value="passed">✅ Passed</option>
+                                    <option value="failed">❌ Failed</option>
+                                    <option value="blocked">🚫 Blocked</option>
+                                    <option value="skipped">⏭️ Skipped</option>
+                                </select>
+                            </div>
+
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Notes
+                                    <span class="text-xs text-gray-500 font-normal ml-2"
+                                          x-show="getTestTimestamp('test_create_routemonitor_cr')"
+                                          x-text="'(Last updated: ' + formatTimestamp(getTestTimestamp('test_create_routemonitor_cr')) + ')'">
+                                    </span>
+                                </label>
+                                <textarea :value="getTestNote('test_create_routemonitor_cr')"
+                                          @blur="setTestNote('test_create_routemonitor_cr', $event.target.value)"
+                                          rows="6"
+                                          placeholder="Record observations, issues encountered, environment details, commands executed, or any relevant notes about this test execution..."
+                                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                </textarea>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    💡 Notes auto-save when you click outside the text area. Export your data to save permanently.
+                                </p>
+                            </div>
+                        </div>
 
                         
                         <div class="p-6 bg-green-50 border-b border-green-100">
@@ -2348,6 +2518,15 @@ spec:
 
                                     
                                     
+
+                                    
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium text-gray-600">Status:</span>
+                                        <span x-text="getStatusLabel('test_verify_probe_metrics')"
+                                              :class="getStatusBadgeClass('test_verify_probe_metrics')"
+                                              class="px-3 py-1 rounded-full text-xs font-semibold">
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -2436,6 +2615,50 @@ spec:
                             </div>
                         </div>
                         
+
+                        
+                        <div class="p-6 bg-gray-50 border-b border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-4 flex items-center">
+                                📝 Test Notes & Status
+                            </h4>
+
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Status
+                                </label>
+                                <select :value="getTestStatus('test_verify_probe_metrics')"
+                                        @change="setTestStatus('test_verify_probe_metrics', $event.target.value)"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="not-started">⚪ Not Started</option>
+                                    <option value="in-progress">🔵 In Progress</option>
+                                    <option value="passed">✅ Passed</option>
+                                    <option value="failed">❌ Failed</option>
+                                    <option value="blocked">🚫 Blocked</option>
+                                    <option value="skipped">⏭️ Skipped</option>
+                                </select>
+                            </div>
+
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Notes
+                                    <span class="text-xs text-gray-500 font-normal ml-2"
+                                          x-show="getTestTimestamp('test_verify_probe_metrics')"
+                                          x-text="'(Last updated: ' + formatTimestamp(getTestTimestamp('test_verify_probe_metrics')) + ')'">
+                                    </span>
+                                </label>
+                                <textarea :value="getTestNote('test_verify_probe_metrics')"
+                                          @blur="setTestNote('test_verify_probe_metrics', $event.target.value)"
+                                          rows="6"
+                                          placeholder="Record observations, issues encountered, environment details, commands executed, or any relevant notes about this test execution..."
+                                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                </textarea>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    💡 Notes auto-save when you click outside the text area. Export your data to save permanently.
+                                </p>
+                            </div>
+                        </div>
 
                         
                         <div class="p-6 bg-green-50 border-b border-green-100">
@@ -3397,6 +3620,15 @@ Forwarding from [::1]:9090 -&gt; 9090</code>
 
                                     
                                     
+
+                                    
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium text-gray-600">Status:</span>
+                                        <span x-text="getStatusLabel('test_create_probe_via_api')"
+                                              :class="getStatusBadgeClass('test_create_probe_via_api')"
+                                              class="px-3 py-1 rounded-full text-xs font-semibold">
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -3530,6 +3762,50 @@ Forwarding from [::1]:9090 -&gt; 9090</code>
                             </div>
                         </div>
                         
+
+                        
+                        <div class="p-6 bg-gray-50 border-b border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-4 flex items-center">
+                                📝 Test Notes & Status
+                            </h4>
+
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Status
+                                </label>
+                                <select :value="getTestStatus('test_create_probe_via_api')"
+                                        @change="setTestStatus('test_create_probe_via_api', $event.target.value)"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="not-started">⚪ Not Started</option>
+                                    <option value="in-progress">🔵 In Progress</option>
+                                    <option value="passed">✅ Passed</option>
+                                    <option value="failed">❌ Failed</option>
+                                    <option value="blocked">🚫 Blocked</option>
+                                    <option value="skipped">⏭️ Skipped</option>
+                                </select>
+                            </div>
+
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Notes
+                                    <span class="text-xs text-gray-500 font-normal ml-2"
+                                          x-show="getTestTimestamp('test_create_probe_via_api')"
+                                          x-text="'(Last updated: ' + formatTimestamp(getTestTimestamp('test_create_probe_via_api')) + ')'">
+                                    </span>
+                                </label>
+                                <textarea :value="getTestNote('test_create_probe_via_api')"
+                                          @blur="setTestNote('test_create_probe_via_api', $event.target.value)"
+                                          rows="6"
+                                          placeholder="Record observations, issues encountered, environment details, commands executed, or any relevant notes about this test execution..."
+                                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                </textarea>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    💡 Notes auto-save when you click outside the text area. Export your data to save permanently.
+                                </p>
+                            </div>
+                        </div>
 
                         
                         <div class="p-6 bg-green-50 border-b border-green-100">
@@ -4697,6 +4973,15 @@ pkill -f &#39;port-forward.*prometheus&#39;</code></pre>
 
                                     
                                     
+
+                                    
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium text-gray-600">Status:</span>
+                                        <span x-text="getStatusLabel('test_cleanup_routemonitor_cr')"
+                                              :class="getStatusBadgeClass('test_cleanup_routemonitor_cr')"
+                                              class="px-3 py-1 rounded-full text-xs font-semibold">
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -4818,6 +5103,50 @@ pkill -f &#39;port-forward.*prometheus&#39;</code></pre>
                             </div>
                         </div>
                         
+
+                        
+                        <div class="p-6 bg-gray-50 border-b border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-4 flex items-center">
+                                📝 Test Notes & Status
+                            </h4>
+
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Status
+                                </label>
+                                <select :value="getTestStatus('test_cleanup_routemonitor_cr')"
+                                        @change="setTestStatus('test_cleanup_routemonitor_cr', $event.target.value)"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="not-started">⚪ Not Started</option>
+                                    <option value="in-progress">🔵 In Progress</option>
+                                    <option value="passed">✅ Passed</option>
+                                    <option value="failed">❌ Failed</option>
+                                    <option value="blocked">🚫 Blocked</option>
+                                    <option value="skipped">⏭️ Skipped</option>
+                                </select>
+                            </div>
+
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Test Notes
+                                    <span class="text-xs text-gray-500 font-normal ml-2"
+                                          x-show="getTestTimestamp('test_cleanup_routemonitor_cr')"
+                                          x-text="'(Last updated: ' + formatTimestamp(getTestTimestamp('test_cleanup_routemonitor_cr')) + ')'">
+                                    </span>
+                                </label>
+                                <textarea :value="getTestNote('test_cleanup_routemonitor_cr')"
+                                          @blur="setTestNote('test_cleanup_routemonitor_cr', $event.target.value)"
+                                          rows="6"
+                                          placeholder="Record observations, issues encountered, environment details, commands executed, or any relevant notes about this test execution..."
+                                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                </textarea>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    💡 Notes auto-save when you click outside the text area. Export your data to save permanently.
+                                </p>
+                            </div>
+                        </div>
 
                         
                         <div class="p-6 bg-green-50 border-b border-green-100">
@@ -5633,7 +5962,11 @@ console-route-monitor 30m</code>
                 expandedTests: [],
                 completedTests: [],
                 completedSteps: {},
+                testStatuses: {},
+                testNotes: {},
+                testTimestamps: {},
                 progressPercentage: 0,
+                testStats: null,
 
                 init() {
                     
@@ -5790,14 +6123,37 @@ console-route-monitor 30m</code>
 
                 calculateProgress() {
                     const totalTests =  5 ;
-                    const completedCount = this.completedTests.length;
-                    this.progressPercentage = totalTests > 0 ? (completedCount / totalTests) * 100 : 0;
+
+                    
+                    const passedCount = Object.values(this.testStatuses).filter(s => s === 'passed').length;
+                    const failedCount = Object.values(this.testStatuses).filter(s => s === 'failed').length;
+                    const inProgressCount = Object.values(this.testStatuses).filter(s => s === 'in-progress').length;
+                    const blockedCount = Object.values(this.testStatuses).filter(s => s === 'blocked').length;
+                    const skippedCount = Object.values(this.testStatuses).filter(s => s === 'skipped').length;
+                    const notStartedCount = totalTests - (passedCount + failedCount + inProgressCount + blockedCount + skippedCount);
+
+                    
+                    this.progressPercentage = totalTests > 0 ? (passedCount / totalTests) * 100 : 0;
+
+                    
+                    this.testStats = {
+                        total: totalTests,
+                        passed: passedCount,
+                        failed: failedCount,
+                        inProgress: inProgressCount,
+                        blocked: blockedCount,
+                        skipped: skippedCount,
+                        notStarted: notStartedCount
+                    };
                 },
 
                 saveProgress() {
                     const progress = {
                         completedTests: this.completedTests,
                         completedSteps: this.completedSteps,
+                        testStatuses: this.testStatuses,
+                        testNotes: this.testNotes,
+                        testTimestamps: this.testTimestamps,
                         lastUpdated: new Date().toISOString()
                     };
                     localStorage.setItem('testplan_progress', JSON.stringify(progress));
@@ -5810,6 +6166,9 @@ console-route-monitor 30m</code>
                             const progress = JSON.parse(saved);
                             this.completedTests = progress.completedTests || [];
                             this.completedSteps = progress.completedSteps || {};
+                            this.testStatuses = progress.testStatuses || {};
+                            this.testNotes = progress.testNotes || {};
+                            this.testTimestamps = progress.testTimestamps || {};
                         } catch (e) {
                             console.error('Error loading progress:', e);
                         }
@@ -5817,12 +6176,144 @@ console-route-monitor 30m</code>
                 },
 
                 resetProgress() {
-                    if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+                    if (confirm('Are you sure you want to reset ALL data (progress, notes, statuses)? This cannot be undone.')) {
                         this.completedTests = [];
                         this.completedSteps = {};
+                        this.testStatuses = {};
+                        this.testNotes = {};
+                        this.testTimestamps = {};
                         this.saveProgress();
                         this.calculateProgress();
                     }
+                },
+
+                getTestStatus(testId) {
+                    return this.testStatuses[testId] || 'not-started';
+                },
+
+                setTestStatus(testId, status) {
+                    this.testStatuses[testId] = status;
+                    this.testTimestamps[testId] = new Date().toISOString();
+                    this.saveProgress();
+                    this.calculateProgress();
+                },
+
+                getStatusLabel(testId) {
+                    const status = this.getTestStatus(testId);
+                    const labels = {
+                        'not-started': '⚪ Not Started',
+                        'in-progress': '🔵 In Progress',
+                        'passed': '✅ Passed',
+                        'failed': '❌ Failed',
+                        'blocked': '🚫 Blocked',
+                        'skipped': '⏭️ Skipped'
+                    };
+                    return labels[status] || labels['not-started'];
+                },
+
+                getStatusBadgeClass(testId) {
+                    const status = this.getTestStatus(testId);
+                    const classes = {
+                        'not-started': 'bg-gray-100 text-gray-700',
+                        'in-progress': 'bg-blue-100 text-blue-700',
+                        'passed': 'bg-green-100 text-green-700',
+                        'failed': 'bg-red-100 text-red-700',
+                        'blocked': 'bg-orange-100 text-orange-700',
+                        'skipped': 'bg-purple-100 text-purple-700'
+                    };
+                    return classes[status] || classes['not-started'];
+                },
+
+                getTestNote(testId) {
+                    return this.testNotes[testId] || '';
+                },
+
+                setTestNote(testId, note) {
+                    this.testNotes[testId] = note;
+                    this.testTimestamps[testId] = new Date().toISOString();
+                    this.saveProgress();
+                },
+
+                getTestTimestamp(testId) {
+                    return this.testTimestamps[testId] || null;
+                },
+
+                formatTimestamp(timestamp) {
+                    if (!timestamp) return '';
+                    const date = new Date(timestamp);
+                    return date.toLocaleString();
+                },
+
+                exportTestData() {
+                    const testData = {
+                        completedTests: this.completedTests,
+                        completedSteps: this.completedSteps,
+                        testStatuses: this.testStatuses,
+                        testNotes: this.testNotes,
+                        testTimestamps: this.testTimestamps,
+                        lastUpdated: new Date().toISOString(),
+                        testPlanTitle: 'RHOBS Next and Synthetic Monitoring E2E Test Plan',
+                        exportVersion: '1.0.0'
+                    };
+
+                    const dataStr = JSON.stringify(testData, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(dataBlob);
+
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `testplan-data-${new Date().toISOString().split('T')[0]}.json`;
+                    link.click();
+
+                    URL.revokeObjectURL(url);
+                    alert('✅ Test data exported successfully!');
+                },
+
+                importTestData(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const imported = JSON.parse(e.target.result);
+
+                            if (!imported.exportVersion) {
+                                if (!confirm('This file may be from an older version. Import anyway?')) {
+                                    event.target.value = '';
+                                    return;
+                                }
+                            }
+
+                            const message = `Import test data from "${imported.testPlanTitle}"?\n\n` +
+                                          `This will replace your current progress:\n` +
+                                          `- ${imported.completedTests?.length || 0} completed tests\n` +
+                                          `- ${Object.keys(imported.testNotes || {}).length} test notes\n` +
+                                          `- Last updated: ${new Date(imported.lastUpdated).toLocaleString()}\n\n` +
+                                          `Current progress will be overwritten!`;
+
+                            if (!confirm(message)) {
+                                event.target.value = '';
+                                return;
+                            }
+
+                            this.completedTests = imported.completedTests || [];
+                            this.completedSteps = imported.completedSteps || {};
+                            this.testStatuses = imported.testStatuses || {};
+                            this.testNotes = imported.testNotes || {};
+                            this.testTimestamps = imported.testTimestamps || {};
+
+                            this.saveProgress();
+                            this.calculateProgress();
+
+                            alert('✅ Test data imported successfully!');
+                            event.target.value = '';
+                        } catch (err) {
+                            alert('❌ Error importing file: ' + err.message);
+                            event.target.value = '';
+                        }
+                    };
+                    reader.readAsText(file);
                 },
 
                 copyToClipboard(text, event) {
