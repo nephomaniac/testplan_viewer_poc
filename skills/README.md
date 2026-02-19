@@ -1,518 +1,749 @@
-# Test Plan Skills Suite
+# Test Plan Skills for Claude Code
 
-Three specialized Claude skills for comprehensive test plan generation, educational enhancement, and systematic execution.
+Specialized Claude Code skills for generating, enhancing, and executing test plans from code repositories, documentation, and other artifacts.
 
-## Overview
+---
 
-This suite provides end-to-end test plan management through three focused skills:
+## Quick Start
+
+### Installation
+
+These skills are designed for **Claude Code CLI** (the official Claude desktop/terminal application).
+
+**Prerequisites**:
+- Claude Code CLI installed ([download here](https://claude.ai/download))
+- This repository cloned locally
+- Git repository to test (or documentation/existing tests)
+
+**Setup**:
+```bash
+# 1. Clone this repository
+git clone https://github.com/nephomaniac/testplan_tools_poc
+cd testplan_tools_poc
+
+# 2. Skills are automatically available when you run Claude Code from this directory
+cd /path/to/testplan_tools_poc
+claude-code
+
+# OR add skills to your global Claude Code skills directory (optional)
+mkdir -p ~/.claude/skills
+ln -s $(pwd)/skills/* ~/.claude/skills/
+
+# 3. Verify skills are available
+# In Claude Code, type:
+#   What skills are available?
+# You should see: testplan-generator, testplan-educator, testplan-executor
+```
+
+### Updating Skills
+
+```bash
+# Pull latest changes from repository
+cd /path/to/testplan_tools_poc
+git pull origin main
+
+# Skills are automatically updated when you restart Claude Code
+# or when you navigate to this directory
+```
+
+---
+
+## Available Skills
+
+| Skill | Purpose | When to Use | Duration |
+|-------|---------|-------------|----------|
+| **testplan-generator** | Analyze artifacts and generate comprehensive test plan JSON | Starting a new test plan from code/docs/tests | 1-2 hours |
+| **testplan-educator** | Enhance test plan with educational content, hyperlinks, learning notes | After initial generation, or to improve existing plan | 30-60 min |
+| **testplan-executor** | Execute tests, collect results, generate reports | Running tests against a cluster, or reviewing execution approach | 1-4 hours |
+
+---
+
+## How to Use the Skills
+
+### Basic Workflow
+
+Skills are invoked conversationally in Claude Code:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Test Plan Lifecycle                       │
-└─────────────────────────────────────────────────────────────────┘
+# In Claude Code chat:
 
-    ┌─────────────────────┐
-    │  1. GENERATION      │  → Comprehensive test coverage
-    │  testplan-generator │     from artifacts
-    └──────────┬──────────┘
-               │
-               ▼
-    ┌─────────────────────┐
-    │  2. EDUCATION       │  → Add learning content,
-    │  testplan-educator  │     make tests educational
-    └──────────┬──────────┘
-               │
-               ▼
-    ┌─────────────────────┐
-    │  3. EXECUTION       │  → Run tests, report results,
-    │  testplan-executor  │     provide follow-up actions
-    └─────────────────────┘
+"Please use the testplan-generator skill to create a test plan for
+the operator at ~/sandbox/my-operator"
 ```
 
-## ⚙️ Built-in Self-Verification
+Claude will:
+1. Recognize the skill name
+2. Load the skill definition from `skills/testplan-generator/skill.md`
+3. Follow the methodology defined in the skill
+4. Generate comprehensive test plan
 
-**All skills include automatic self-verification to ensure they're always up to date.**
+### Providing Source Artifacts
 
-Before executing, each skill:
-1. ✅ Checks if it matches the version in the repository
-2. ✅ Compares against remote for updates
-3. ✅ Prompts you if differences are found
-4. ✅ Offers options to update or continue
+**The quality of your test plan depends on the artifacts you provide.** Follow this checklist:
 
-**Why this matters:**
-- Skills evolve and improve over time
-- Ensures you're using latest features
-- Prevents drift from source of truth
-- Transparent and user-controlled
+#### ✅ Minimum Required (Choose ONE)
 
-[→ See how self-verification works](SKILL-VERIFICATION.md)
+**Option 1: Git Repository** (Most Common)
+```
+Source: Git repository at ~/sandbox/my-operator
+Purpose: Generate test plan for operator installation and operations
 
-**Quick example:**
+Please analyze:
+  - Code in controllers/, api/, pkg/
+  - Existing tests in test/e2e/, test/integration/
+  - Documentation in docs/, README.md
+  - Configuration examples in config/, deploy/
+```
+
+**Option 2: Documentation**
+```
+Source: Documentation at ~/sandbox/product-docs/
+Purpose: Generate user acceptance tests for product features
+
+Please analyze:
+  - User guides in guides/*.md
+  - API documentation in api-reference/
+  - Installation instructions in install/
+  - Troubleshooting guides in troubleshooting/
+```
+
+**Option 3: Existing Test Suite**
+```
+Source: JUnit test results at test-results/*.xml
+Purpose: Convert existing tests to educational test plan format
+
+Please analyze:
+  - Test structure and naming conventions
+  - Setup and teardown patterns
+  - Test data and fixtures
+  - Assertions and validation logic
+```
+
+#### ✅ Highly Recommended Supporting Artifacts
+
+**Provide these to create robust, comprehensive test plans**:
+
+**Code & Configuration**:
+- ✅ Related repositories (dependencies, integrations): `~/sandbox/related-repo`
+- ✅ Configuration examples: `config/samples/*.yaml`
+- ✅ Helm charts / deployment manifests: `deploy/`, `charts/`
+- ✅ API specifications: `api/openapi.yaml`, `proto/*.proto`
+
+**Documentation**:
+- ✅ Architecture documentation: `docs/architecture.md`, design docs
+- ✅ User guides: `docs/user-guide.md`, getting started guides
+- ✅ Runbooks/SOPs: `docs/runbooks/`, operational procedures
+- ✅ Troubleshooting guides: Known issues, FAQs, debugging guides
+- ✅ Release notes: What's new, breaking changes, deprecations
+
+**Tests & Quality**:
+- ✅ Existing tests: `test/e2e/`, `test/integration/`, `test/unit/`
+- ✅ Test fixtures: `testdata/`, sample configurations, mock data
+- ✅ CI/CD configurations: `.github/workflows/`, `Jenkinsfile`
+- ✅ Test coverage reports: What's tested vs not tested
+
+**Operational Data**:
+- ✅ Bug reports: JIRA queries, GitHub issues (provide links or exports)
+- ✅ Incident postmortems: What went wrong and how was it fixed
+- ✅ Monitoring dashboards: Grafana URLs, Prometheus queries
+- ✅ Known limitations: Performance constraints, supported configurations
+
+#### ✅ Context Information
+
+**Always provide this context**:
 
 ```
-User: "Use testplan-generator skill"
+Target system: "ROSA HCP Monitoring Operator"
 
-Claude:
-⚠️ Remote repository has a newer version (1 hour ago)
+Environment types to cover:
+  - AWS, GCP (cloud providers)
+  - Single-AZ, Multi-AZ (availability zones)
+  - HCP, Classic (cluster types)
+
+User personas:
+  - SRE engineers (primary)
+  - QE team (testing)
+  - New engineers (onboarding)
+
+Coverage goals:
+  - Installation and upgrades (focus)
+  - Configuration and customization
+  - Monitoring and observability
+  - Troubleshooting common issues
+
+Difficulty level:
+  - 30% beginner (basic operations)
+  - 50% intermediate (standard workflows)
+  - 20% advanced (edge cases, debugging)
+```
+
+#### 📋 Example: Comprehensive Artifact Specification
+
+**Best practice for creating a robust test plan**:
+
+```
+Please create a comprehensive test plan for the Configure AlertManager Operator (CAMO).
+
+PRIMARY ARTIFACT:
+  Git repository: ~/sandbox/camo/configure-alertmanager-operator
+
+SUPPORTING ARTIFACTS:
+  Code:
+    - Controllers: controllers/*.go
+    - API definitions: api/v1alpha1/*.go
+    - E2E tests: test/e2e/*.go
+    - Unit tests: *_test.go
+
+  Documentation:
+    - README.md (overview and quick start)
+    - docs/architecture.md (system design)
+    - docs/LOCAL_TESTING.md (development guide)
+    - Inline godoc comments
+
+  Configuration:
+    - CRD examples: config/samples/*.yaml
+    - RBAC definitions: config/rbac/*.yaml
+    - Deployment manifests: deploy/*.yaml
+
+  Related Repositories:
+    - Alertmanager: (for integration understanding)
+    - Prometheus Operator: (for ServiceMonitor patterns)
+
+  Bug Reports:
+    - JIRA query: project=SREP AND component=CAMO
+    - Common issues: Webhook failures, RBAC errors, config validation
+
+CONTEXT:
+  Target System: Configure AlertManager Operator (CAMO)
+  Purpose: Automate Alertmanager configuration for OpenShift Dedicated clusters
+
+  Environment Types:
+    - ROSA HCP clusters
+    - OpenShift Dedicated clusters
+    - Stage environment (for testing)
+
+  User Personas:
+    - SRE engineers (install, configure, troubleshoot)
+    - QE team (E2E testing)
+    - New engineers onboarding to CAMO
+
+  Coverage Goals:
+    - Installation and RBAC setup
+    - Secret creation and validation
+    - Webhook configuration
+    - Alertmanager config updates
+    - Troubleshooting common failures
+
+  Difficulty Distribution:
+    - 40% beginner (verify installation, check logs)
+    - 40% intermediate (create secrets, configure webhooks)
+    - 20% advanced (debug validation, handle edge cases)
+
+  Safety Requirements:
+    - Read-only tests for production validation
+    - Modifying tests must have cleanup
+    - All tests must be idempotent where possible
+
+OUTPUT:
+  Directory: examples/camo/
+  Files needed:
+    - camo-testplan.json (test plan)
+    - camo-testplan.html (interactive viewer)
+    - README.md (example documentation)
+    - EXECUTION-REVIEW.md (safety analysis)
+
+WORKFLOW:
+  1. Use testplan-generator skill to analyze and generate tests
+  2. Use testplan-educator skill to add educational content
+  3. Use testplan-viewer to generate HTML
+  4. Use testplan-executor to review execution approach (don't run yet)
+  5. Document improvements to testplan_tools_poc repository
+
+Please proceed with comprehensive analysis and test generation.
+```
+
+---
+
+## Skill Usage Patterns
+
+### Pattern 1: New Test Plan from Git Repository
+
+**When**: You have a codebase and want comprehensive test coverage
+
+**Prompt Template**:
+```
+Create a comprehensive test plan for <SYSTEM_NAME> at <PATH>.
+
+Primary artifact: Git repository at <PATH>
+Supporting artifacts:
+  - Documentation: <PATHS>
+  - Existing tests: <PATHS>
+  - Configuration examples: <PATHS>
+  - Related repositories: <PATHS>
+
+Context:
+  - Target audience: <PERSONAS>
+  - Environment types: <ENVIRONMENTS>
+  - Coverage focus: <FOCUS_AREAS>
+  - Difficulty: <DISTRIBUTION>
+
+Output: examples/<SYSTEM_NAME>/
+
+Workflow:
+  1. testplan-generator - Analyze and generate
+  2. testplan-educator - Add educational content
+  3. testplan-viewer - Generate HTML
+  4. testplan-executor - Review approach (don't run)
+  5. Document improvements
+```
+
+**Example**:
+```
+Create a comprehensive test plan for route-monitor-operator at ~/sandbox/route-monitor-operator.
+
+Primary artifact: Git repository at ~/sandbox/route-monitor-operator
+Supporting artifacts:
+  - E2E tests: test/e2e/*.go
+  - API definitions: api/v1alpha1/*.go
+  - Documentation: README.md, docs/*.md
+  - Related: RHOBS Synthetics API integration
+
+Context:
+  - Target audience: SRE engineers, QE team
+  - Environment types: ROSA HCP, OpenShift Dedicated
+  - Coverage focus: Installation, RouteMonitor CR creation, metrics validation
+  - Difficulty: 30% beginner, 50% intermediate, 20% advanced
+
+Output: examples/route-monitor-operator/
+
+Please proceed with comprehensive test plan generation.
+```
+
+### Pattern 2: Enhance Existing Test Plan
+
+**When**: You have a test plan and want to improve educational content
+
+**Prompt Template**:
+```
+Enhance the test plan at examples/<SYSTEM_NAME>/<SYSTEM_NAME>-testplan.json
+with educational content.
+
+Use testplan-educator skill to:
+  1. Add hyperlinks for technical terms (first occurrence)
+  2. Enhance learning_note for every step
+  3. Add conceptual_overview for complex tests
+  4. Expand common_errors with troubleshooting
+  5. Add "why this matters" context
+
+Regenerate HTML when done.
+```
+
+**Example**:
+```
+Enhance examples/camo/camo-testplan.json with educational content.
+
+Focus:
+  - Hyperlink these terms: Secret, ValidatingWebhook, ConfigMap, ServiceMonitor
+  - Add conceptual_overview for test_configure_pagerduty_integration
+  - Expand common_errors for test_validate_alertmanager_config
+  - Add real-world context for when to use each test
+
+Use testplan-educator skill, then regenerate HTML.
+```
+
+### Pattern 3: Execute Tests (or Review Execution)
+
+**When**: You want to run tests or understand execution approach
+
+**Prompt Template for Review** (Safe):
+```
+Review the execution approach for examples/<SYSTEM_NAME>/<SYSTEM_NAME>-testplan.json
+
+Use testplan-executor skill to:
+  1. Analyze dependencies and execution order
+  2. Classify safety (read-only vs modifies-state)
+  3. Identify cleanup requirements
+  4. Create pre-execution checklist
+  5. Document execution flow
+  6. Identify gaps and improvements
+
+DO NOT execute tests, only review the approach.
+Output: examples/<SYSTEM_NAME>/EXECUTION-REVIEW.md
+```
+
+**Prompt Template for Execution** (Requires Cluster):
+```
+Execute tests from examples/<SYSTEM_NAME>/<SYSTEM_NAME>-testplan.json
+
+Environment:
+  - Cluster: <CLUSTER_TYPE> (verified NON-PRODUCTION)
+  - Access: KUBECONFIG=<PATH>
+  - Credentials: <ENV_VARS or credentials file>
+
+Mode: <read-only | full>
+
+If read-only:
+  - Only run tests where system_impact.type == "read-only"
+  - Generate validation report
+  - Safe to run in any environment
+
+If full:
+  - Run all tests in dependency order
+  - Track cleanup requirements
+  - Prompt before each modifying test
+  - Run cleanup tests at end
+  - Generate comprehensive report
+
+Please confirm cluster is non-production before starting.
+```
+
+**Example (Review)**:
+```
+Review the execution approach for examples/camo/camo-testplan.json
+
+Use testplan-executor skill to analyze:
+  - Test dependencies
+  - Safety classifications
+  - Cleanup coverage
+  - Execution order
+  - Pre-flight checklist
+
+Output: examples/camo/EXECUTION-REVIEW.md
+
+Do NOT execute tests.
+```
+
+**Example (Read-Only Execution)**:
+```
+Execute read-only tests from examples/camo/camo-testplan.json
+
+Environment:
+  - Cluster: ROSA HCP test cluster (non-production)
+  - Access: KUBECONFIG=/path/to/test-cluster.kubeconfig
+  - Namespace: openshift-configure-alertmanager-operator
+
+Mode: read-only
+
+Please:
+  1. Verify cluster access
+  2. Run only tests where system_impact.type == "read-only"
+  3. Generate validation report showing installation health
+  4. Highlight any issues found
+
+This is safe to run on the test cluster.
+```
+
+### Pattern 4: Update Test Plan
+
+**When**: Code changed, bugs fixed, features added
+
+**Prompt Template**:
+```
+Update examples/<SYSTEM_NAME>/<SYSTEM_NAME>-testplan.json
+
+Changes:
+  <Describe what changed>
+
+Updates needed:
+  1. <Add new tests, update commands, fix errors, etc.>
+  2. <Update learning notes, references, etc.>
+  3. <Regenerate HTML>
+
+Please:
+  - Maintain safety classifications
+  - Update learning path if needed
+  - Test JSON parses correctly
+  - Document in CHANGELOG
+```
+
+**Example**:
+```
+Update examples/camo/camo-testplan.json
+
+Changes:
+  - CAMO v2.0 now uses different secret format
+  - New CLI flag: --validate-only
+  - Bug fixed: webhook timeout is now configurable
+
+Updates needed:
+  1. Update test_create_pagerduty_secret to use new secret format
+  2. Add test_validate_configuration_only (uses --validate-only flag)
+  3. Update test_configure_webhook to show timeout configuration
+  4. Update expected outputs where format changed
+
+Please update the test plan, regenerate HTML, and document changes in CHANGELOG.md.
+```
+
+### Pattern 5: Implement Repository Improvements
+
+**When**: After creating test plan, you identified improvements to the tooling
+
+**Prompt Template**:
+```
+Implement improvements to testplan_tools_poc repository.
+
+Based on: examples/<SYSTEM_NAME>/IMPROVEMENTS.md
+
+Priority: <Critical | High | Medium>
+
+Improvements to implement:
+  1. <Improvement description>
+  2. <Improvement description>
+
+Please:
+  - Update Go code, skills, or templates
+  - Test with existing test plans
+  - Regenerate all example HTMLs to verify
+  - Update documentation
+  - Mark improvements as completed in REPOSITORY-IMPROVEMENTS.md
+```
+
+**Example**:
+```
+Implement critical improvements from examples/rhobs-next/IMPROVEMENTS.md
+
+Priority: Critical (blocks test plan generation)
+
+Improvements:
+  1. Add schema validation to testplan-generator skill
+  2. Auto-generate cleanup tests for modifies-state tests
+  3. Validate alternative_paths include dependencies
+
+Please:
+  - Update skills/testplan-generator/skill.md
+  - Update internal/parser/validator.go
+  - Add schema generation: go install jsonschema, generate schema
+  - Test with camo and rhobs-next examples
+  - Mark as ✅ Complete in REPOSITORY-IMPROVEMENTS.md
+```
+
+---
+
+## Skill Self-Verification
+
+**All skills auto-verify themselves against the repository** to ensure they're using the latest definitions.
+
+When you invoke a skill, it will:
+1. Check if local skill definition has changes
+2. Compare with committed version
+3. Prompt if differences found
+
+**Prompt example**:
+```
+⚠️ Skill Definition Verification
+
+I've detected differences in the testplan-generator skill definition:
+  - local has uncommitted changes in Phase 6 (safety analysis)
+  - remote has updates to schema validation
+
 Options:
-1. Continue with current
-2. Use latest from repo (recommended)
-3. Show me the diff
-4. Cancel - I'll update first
+1. Continue with current version (may be outdated)
+2. Read latest version from repository and use that
+3. Show me the full diff to review
+4. Cancel and let me update the skill first
 
 What would you like to do?
 ```
 
----
+**Best practice**: Choose option 2 (use latest from repository)
 
-## The Three Skills
-
-### 1. testplan-generator
-
-**Focus:** Comprehensive test case generation
-
-**What it does:**
-- Analyzes code repositories, tests, and documentation
-- Generates comprehensive test coverage
-- Creates environment variants (AWS, GCP, Azure)
-- Covers input permutations and edge cases
-- Identifies coverage gaps
-
-**Use when:**
-- Starting a new test plan from scratch
-- Expanding coverage to new environments
-- Systematically covering all scenarios
-- Need gap analysis
-
-**Input:**
-- Code repository OR documentation OR existing tests
-- Environment types to cover
-- Coverage goals
-
-**Output:**
-- Comprehensive test plan JSON
-- Coverage matrix
-- Gap analysis
-- Recommendations
-
-[→ Full documentation](testplan-generator/)
+**To skip verification** (if you're developing/testing skills):
+```
+"skip verification" - Use the testplan-generator skill to...
+```
 
 ---
 
-### 2. testplan-educator
+## Advanced Usage
 
-**Focus:** Educational enhancement and UX
+### Customizing Skills with Parameters
 
-**What it does:**
-- Adds concept explanations
-- Writes learning objectives
-- Documents common mistakes
-- Provides multi-modal resources
-- Creates progressive learning paths
-
-**Use when:**
-- Making tests beginner-friendly
-- Creating onboarding materials
-- Adding documentation to tests
-- Improving test educational value
-- Teaching through testing
-
-**Input:**
-- Test plan JSON
-- Target audience
-- Learning objectives
-
-**Output:**
-- Educationally enhanced test plan JSON
-- Concept reference guide
-- Learning resource list
-
-[→ Full documentation](testplan-educator/)
-
----
-
-### 3. testplan-executor
-
-**Focus:** Execution, reporting, and follow-up
-
-**What it does:**
-- Executes tests systematically
-- Validates results
-- Generates comprehensive reports
-- Identifies failure patterns
-- Provides remediation steps
-
-**Use when:**
-- Executing test plans
-- Validating test accuracy
-- Generating stakeholder reports
-- Identifying root causes
-- Creating action plans
-
-**Input:**
-- Test plan JSON
-- Environment context
-- Execution scope and mode
-
-**Output:**
-- Executive summary
-- Detailed technical report
-- Follow-up action plan
-- Gap analysis
-- Test results JSON
-
-[→ Full documentation](testplan-executor/)
-
-## Usage Patterns
-
-### Pattern 1: End-to-End New Test Plan
-
-**Goal:** Create and validate a complete test plan for a new service
+Skills accept parameters to control behavior:
 
 ```
-Step 1: Generate comprehensive coverage
-  → Use: testplan-generator
-  → Input: Code repository + documentation
-  → Output: examples/service-testplan.json
+# Generate only test cases, reuse existing concepts
+Use testplan-generator skill with --tests-only to generate
+additional tests for examples/my-operator/my-operator-testplan.json
 
-Step 2: Add educational content
-  → Use: testplan-educator
-  → Input: examples/service-testplan.json
-  → Output: examples/service-testplan-educational.json
+# Add only hyperlinks, don't modify other content
+Use testplan-educator skill with --hyperlinks-only to enhance
+examples/my-operator/my-operator-testplan.json
 
-Step 3: Execute and validate
-  → Use: testplan-executor
-  → Input: examples/service-testplan-educational.json
-  → Output: test-results/YYYYMMDD_HHMMSS/ (reports)
-
-Step 4: Iterate based on findings
-  → Update test plan based on execution results
-  → Re-execute
+# Dry-run execution review without accessing cluster
+Use testplan-executor skill in --dry-run mode to review
+examples/my-operator/my-operator-testplan.json execution approach
 ```
 
-**Time estimate:** 4-6 hours total
-
----
-
-### Pattern 2: Quick Coverage Generation
-
-**Goal:** Rapidly generate test coverage without education overhead
+### Chaining Skills
 
 ```
-Step 1: Generate from existing tests
-  → Use: testplan-generator
-  → Input: E2E test files
-  → Output: examples/coverage-testplan.json
+Please create a complete test plan for ~/sandbox/my-operator:
 
-Step 2: Execute to validate
-  → Use: testplan-executor
-  → Input: examples/coverage-testplan.json
-  → Output: Gap analysis and recommendations
+1. testplan-generator: Analyze repo and generate test plan JSON
+2. testplan-educator: Enhance with educational content and hyperlinks
+3. testplan-viewer: Generate interactive HTML
+4. testplan-executor --dry-run: Review execution approach
+5. Document improvements to repository
+
+Output: examples/my-operator/
 ```
 
-**Time estimate:** 1-2 hours
+### Providing Credentials Securely
 
----
-
-### Pattern 3: Educational Enhancement Only
-
-**Goal:** Make existing tests more beginner-friendly
-
-```
-Step 1: Enhance existing test plan
-  → Use: testplan-educator
-  → Input: examples/existing-testplan.json
-  → Output: examples/existing-testplan-educational.json
-
-Step 2: Generate HTML and review
-  → make run
-  → Review with target audience
-
-Step 3: Iterate based on feedback
-```
-
-**Time estimate:** 2-3 hours
-
----
-
-### Pattern 4: Execution and Remediation
-
-**Goal:** Run tests and fix issues
-
-```
-Step 1: Execute test plan
-  → Use: testplan-executor
-  → Input: examples/testplan.json
-  → Output: Reports showing failures
-
-Step 2: Follow remediation steps
-  → Use: Follow-up action plan
-  → Fix critical blockers
-
-Step 3: Re-execute failed tests
-  → Use: testplan-executor --resume-from test_3
-  → Validate fixes work
-
-Step 4: Update test plan
-  → Incorporate learnings
-  → Use testplan-educator to add troubleshooting notes
-```
-
-**Time estimate:** 2-4 hours (varies by issues)
-
----
-
-### Pattern 5: Continuous Validation
-
-**Goal:** Regular test plan execution for CI/CD
-
-```
-Scheduled execution (nightly, weekly, etc.):
-  → Use: testplan-executor (automated mode)
-  → Input: examples/regression-testplan.json
-  → Output: Automated reports
-  → Alert on failures
-
-On failure:
-  → Review detailed report
-  → Follow remediation plan
-  → Update test plan if needed
-```
-
-**Time estimate:** 1-3 hours per run
-
-## Skill Selection Guide
-
-**Choose testplan-generator when you need:**
-- ✅ Comprehensive test coverage across environments
-- ✅ Systematic coverage of all scenarios
-- ✅ Gap identification
-- ✅ Environment variant generation
-- ✅ Input permutation testing
-
-**Choose testplan-educator when you need:**
-- ✅ Beginner-friendly tests
-- ✅ Learning while testing
-- ✅ Concept explanations
-- ✅ Common mistake prevention
-- ✅ Multi-modal learning resources
-
-**Choose testplan-executor when you need:**
-- ✅ Automated test execution
-- ✅ Result validation
-- ✅ Stakeholder reports
-- ✅ Failure pattern analysis
-- ✅ Remediation action plans
-
-**Use all three when:**
-- ✅ Creating comprehensive educational test plans
-- ✅ Onboarding new team members
-- ✅ Building production validation suites
-- ✅ Establishing test-driven processes
-
-## Integration with Test Plan Viewer
-
-All skills work with the test plan viewer:
-
+**Option 1: Environment file** (recommended)
 ```bash
-# After any skill generates/enhances a test plan:
-make run
+# Create credentials file (add to .gitignore)
+cat > test-credentials.env <<EOF
+export KUBECONFIG=/path/to/test-cluster.kubeconfig
+export RHOBS_API_URL=https://api-stage.example.com
+export ACCESS_TOKEN=<token>
+EOF
 
-# Or specify the test plan:
-./build/testplan-viewer -i examples/your-testplan.json -o output.html
-
-# Open in browser:
-open output.html
+# Source before using Claude Code
+source test-credentials.env
 ```
 
-The HTML viewer provides:
-- Interactive test execution
-- Progress tracking
-- Copy-to-clipboard commands
-- Collapsible sections
-- Search and filter
-- Browser-based persistence
+**Option 2: Secure credential storage**
+```bash
+# Store in secure location
+mkdir -p ~/.config/testplan-tools/
+chmod 700 ~/.config/testplan-tools/
+echo "export ACCESS_TOKEN=..." > ~/.config/testplan-tools/credentials
+chmod 600 ~/.config/testplan-tools/credentials
 
-## File Organization
-
-```
-skills/
-├── README.md                    # This file
-├── testplan-generator/
-│   ├── skill.md                # Generator skill prompt
-│   └── README.md               # Generator documentation
-├── testplan-educator/
-│   ├── skill.md                # Educator skill prompt
-│   └── README.md               # Educator documentation
-└── testplan-executor/
-    ├── skill.md                # Executor skill prompt
-    └── README.md               # Executor documentation
-
-examples/
-├── [service]-testplan.json              # Generated test plan
-├── [service]-testplan-educational.json  # With education
-└── test-results/
-    └── YYYYMMDD_HHMMSS/
-        ├── REPORT_EXECUTIVE.md
-        ├── REPORT_DETAILED.md
-        └── REPORT_FOLLOWUP.md
+# Reference in prompt
 ```
 
-## How to Use a Skill
-
-### Method 1: Direct Invocation
-
 ```
-# Tell Claude which skill to use:
-"Use the testplan-generator skill to create a test plan for my operator"
-```
+Execute tests with credentials from ~/.config/testplan-tools/credentials
 
-Claude will follow the skill's instructions and generate the output.
-
-### Method 2: Reference Skill File
-
-```
-# Share the skill file:
-cat skills/testplan-generator/skill.md
-
-# Then provide context:
-"Generate test plan for: /path/to/my-service"
+Please:
+  - Source the credentials file
+  - Verify access to cluster
+  - Run read-only tests
+  - Do NOT log credentials in output
 ```
 
-### Method 3: Use Skill Documentation
-
-```
-# Share the README:
-cat skills/testplan-generator/README.md
-
-# Then request:
-"Generate following the example in the README"
-```
-
-## Best Practices
-
-### For testplan-generator
-
-**Do:**
-- Provide as many artifacts as possible
-- Specify all environments to cover
-- Define clear coverage goals
-- Review gap analysis
-
-**Don't:**
-- Skip environment variants
-- Ignore the gap analysis
-- Expect 100% coverage on first pass
-
-### For testplan-educator
-
-**Do:**
-- Specify target audience clearly
-- Provide documentation sources
-- Review with actual beginners
-- Iterate based on feedback
-
-**Don't:**
-- Use jargon without explaining
-- Assume prerequisite knowledge
-- Forget common mistakes
-- Only provide one learning modality
-
-### For testplan-executor
-
-**Do:**
-- Verify prerequisites first
-- Capture all outputs
-- Follow remediation plans
-- Re-execute after fixes
-
-**Don't:**
-- Skip prerequisite checks
-- Continue blindly after failures
-- Ignore gap analysis
-- Forget to preserve artifacts
-
-## Success Metrics
-
-### For testplan-generator
-- ✅ 70%+ feature coverage
-- ✅ 3+ environment variants per test
-- ✅ Negative tests included
-- ✅ Gaps documented with recommendations
-
-### For testplan-educator
-- ✅ Every concept explained
-- ✅ Every step has learning context
-- ✅ Common mistakes documented
-- ✅ Multiple learning resources
-- ✅ Passes "beginner test"
-
-### For testplan-executor
-- ✅ 100% output capture
-- ✅ Clear pass/fail determination
-- ✅ Root cause analysis on failures
-- ✅ Prioritized action plan
-- ✅ Multiple report formats
+---
 
 ## Troubleshooting
 
-### "Which skill should I use?"
+### Skill Not Found
 
-See [Skill Selection Guide](#skill-selection-guide) above.
+**Symptom**: "Unknown skill: testplan-generator"
 
-### "Can I use multiple skills together?"
+**Solution**:
+```bash
+# Verify skills directory exists
+ls -la skills/
 
-Yes! See [Usage Patterns](#usage-patterns) for common workflows.
+# Verify you're in the repository directory
+pwd
+# Should be: /path/to/testplan_tools_poc
 
-### "How long does each skill take?"
+# Restart Claude Code from repository directory
+cd /path/to/testplan_tools_poc
+claude-code
+```
 
-- **testplan-generator**: 1-3 hours (depending on complexity)
-- **testplan-educator**: 1-2 hours (per test plan)
-- **testplan-executor**: Variable (depends on test plan size)
+### Skill Definition Outdated
 
-### "What if the output isn't what I need?"
+**Symptom**: Generated test plan doesn't match expected structure
 
-1. Review the skill's README for examples
-2. Provide more specific context
-3. Iterate with Claude to refine
-4. Use AskUserQuestion for clarification
+**Solution**:
+```bash
+# Pull latest changes
+git pull origin main
 
-## Next Steps
+# Let skill auto-verify (choose option 2: use latest)
+# OR manually update
+cd skills/testplan-generator/
+git diff skill.md  # Review changes
+git checkout skill.md  # Revert to repository version
+```
 
-1. **Read skill documentation**
-   - [testplan-generator/README.md](testplan-generator/README.md)
-   - [testplan-educator/README.md](testplan-educator/README.md)
-   - [testplan-executor/README.md](testplan-executor/README.md)
+### Generated JSON Doesn't Parse
 
-2. **Try a simple example**
-   - Start with testplan-generator
-   - Use a small repository
-   - Review the output
+**Symptom**: `Error: failed to parse test plan`
 
-3. **Iterate and improve**
-   - Use findings from executor
-   - Enhance with educator
-   - Build your test library
+**Solution**:
+```
+The generated test plan at examples/my-operator/my-operator-testplan.json
+failed to parse.
 
-4. **Share and collaborate**
-   - Commit test plans to git
-   - Share HTML with team
-   - Track in version control
+Please:
+  1. Read internal/models/testplan.go to see expected structure
+  2. Validate JSON structure with jq
+  3. Fix structure mismatches (prerequisites, references, etc.)
+  4. Regenerate HTML to verify
+  5. Document issue in IMPROVEMENTS.md as a schema validation gap
+```
+
+### Skills Keep Prompting for Verification
+
+**Symptom**: Every skill use asks to verify against repository
+
+**Cause**: Local changes to skill.md files
+
+**Solution**:
+```bash
+# Check status
+git status skills/
+
+# If you want to keep local changes
+git stash
+git pull
+git stash pop
+
+# If you want repository version
+git checkout -- skills/
+git pull
+```
+
+---
+
+## Examples
+
+See `examples/` directory for complete examples:
+
+- **camo/** - Configure AlertManager Operator
+- **rhobs-next/** - RHOBS Next Synthetic Monitoring (comprehensive example)
+- **rhobs/** - Original RHOBS examples (v1 format)
+
+Each example includes:
+- Test plan JSON
+- Interactive HTML viewer
+- README with creation notes
+- EXECUTION-REVIEW for safety analysis
+- IMPROVEMENTS documenting findings
+
+---
 
 ## Contributing
 
-To add a new skill to this suite:
+Found a bug or have an improvement?
 
-1. Create directory: `skills/new-skill/`
-2. Write `skill.md` with comprehensive instructions
-3. Write `README.md` with examples and documentation
-4. Update this README with skill information
-5. Test the skill with Claude
-6. Commit to repository
+1. Document in `REPOSITORY-IMPROVEMENTS.md`
+2. Prioritize: Critical → High → Medium
+3. Ask Claude to implement
+4. Test with existing examples
+5. Submit PR if contributing back
 
-## Related Documentation
+---
 
-- [Master Prompt](.claude/prompts/MASTER-PROMPT.md) - Complete prompt system
-- [Prompts README](.claude/prompts/README.md) - Individual prompts
-- [Examples README](examples/README.md) - Test plan examples
-- [Project README](README.md) - Main project documentation
+## Questions?
+
+- Read skill.md files in each skill directory for detailed methodology
+- Check examples/README.md for usage patterns
+- Review existing examples in examples/
+- See docs/ for detailed documentation
+
+**Quick Help**:
+```
+In Claude Code, ask:
+"How do I use the testplan-generator skill?"
+"Show me an example of creating a test plan"
+"What artifacts do I need to provide?"
+```
+
+Happy test planning! 🧪

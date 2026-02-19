@@ -1,6 +1,6 @@
-# RHOBS Test Plan Viewer
+# Test Plan Viewer
 
-A CLI tool that generates interactive, educational HTML documentation from RHOBS test plan JSON files.
+A CLI tool that generates interactive, educational HTML documentation from test plan JSON files.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ make build
 make run
 
 # Or use the binary directly
-./build/testplan-viewer -i examples/rhobs_test_plan_v2.json -o testplan.html
+./build/testplan-viewer -i examples/camo/camo-testplan.json -o testplan.html
 
 # Open testplan.html in your browser
 ```
@@ -73,10 +73,10 @@ make clean
 testplan-viewer -i <input.json> -o <output.html>
 
 # With default paths
-testplan-viewer  # Uses examples/rhobs_test_plan_v2.json
+testplan-viewer  # Uses examples/camo/camo-testplan.json
 
 # Examples
-testplan-viewer -i examples/rhobs_test_plan.json -o my_testplan.html
+testplan-viewer -i examples/camo/camo-testplan.json -o my_testplan.html
 ```
 
 ## Creating Test Plans
@@ -119,8 +119,8 @@ Each component is independently testable and follows the single responsibility p
 
 ## License
 
-Internal Red Hat tool for RHOBS team use.
+Internal Red Hat tool for OpenShift SRE team use.
 
 ## Contributing
 
-For questions or improvements, contact the RHOBS SRE team.
+For questions or improvements, contact the OpenShift SRE team.

@@ -527,4 +527,4 @@ Before running tests, verify:
 See complete examples in:
 - `.claude/templates/backup-cleanup-pattern.json`
 - `.claude/templates/testplan-template.json` (test_1 and test_2)
-- `examples/rhobs_test_plan_v2.json` (when updated)
+- `examples/camo/camo-testplan.json` (comprehensive example)

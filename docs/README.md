@@ -1,6 +1,6 @@
-# RHOBS Test Plan Viewer
+# Test Plan Viewer
 
-An interactive HTML generator for RHOBS test plans, optimized for **onboarding and training new developers**.
+An interactive HTML generator for test plans, optimized for **onboarding and training new developers**.
 
 ## Features
 
@@ -55,22 +55,22 @@ go run main.go
 ./testplan-viewer
 
 # Specify input and output files
-./testplan-viewer -i rhobs_test_plan_v2.json -o my_testplan.html
+./testplan-viewer -i examples/camo/camo-testplan.json -o my_testplan.html
 
 # Using go run
-go run main.go --input rhobs_test_plan_v2.json --output testplan.html
+go run main.go --input examples/camo/camo-testplan.json --output testplan.html
 ```
 
 ### Flags
 
-- `-i, --input`: Input JSON file path (default: `rhobs_test_plan_v2.json`)
+- `-i, --input`: Input JSON file path (default: `examples/camo/camo-testplan.json`)
 - `-o, --output`: Output HTML file path (default: `testplan.html`)
 - `-h, --help`: Show help message
 
 ### Example Output
 
 ```
-📖 Reading test plan from: rhobs_test_plan_v2.json
+📖 Reading test plan from: examples/camo/camo-testplan.json
 🔍 Parsing test plan JSON...
 ✅ Validating test plan structure...
    ✓ Metadata valid
@@ -80,11 +80,11 @@ go run main.go --input rhobs_test_plan_v2.json --output testplan.html
 🎨 Generating interactive HTML to: testplan.html
 
 ✨ Success! Generated test plan HTML with:
-   • 3 test cases
-   • 3 concepts explained
-   • Learning path: Recommended sequence for new developers to learn the system
-   • Target audience: New engineers onboarding to RHOBS/ROSA
-   • Estimated time: 2-3 hours
+   • 4 test cases
+   • 7 concepts explained
+   • Learning path: Recommended sequence for understanding CAMO operator
+   • Target audience: SRE Engineers, QE Team, Platform Engineers
+   • Estimated time: 6-8 hours
 
 🚀 Open testplan.html in your browser to get started!
 ```
@@ -133,21 +133,22 @@ The tool expects JSON with this structure (optimized for learning):
 }
 ```
 
-See `rhobs_test_plan_v2.json` for a complete example.
+See `examples/camo/camo-testplan.json` for a complete example.
 
 ## Architecture
 
 ```
-testplan-viewer/
-├── main.go                    # CLI entrypoint (Cobra)
-├── models/
-│   └── testplan.go           # Go structs matching JSON schema
-├── generator/
-│   ├── html.go               # HTML generation logic
-│   └── templates/
-│       └── testplan.html     # Alpine.js + Tailwind template
-├── rhobs_test_plan_v2.json  # Example test plan (v2 - learning optimized)
-└── testplan.html             # Generated output
+testplan_tools_poc/
+├── cmd/testplan-viewer/       # CLI entrypoint (Cobra)
+├── internal/
+│   ├── models/               # Go structs matching JSON schema
+│   ├── parser/               # JSON parsing and validation
+│   └── generator/            # HTML generation logic
+│       └── templates/
+│           └── testplan.html # Alpine.js + Tailwind template
+├── examples/                  # Example test plan JSON files
+│   └── camo/                 # CAMO operator example
+└── testplan.html              # Generated output
 ```
 
 ### Technology Stack
@@ -198,7 +199,7 @@ This makes the JSON **consumable as training material**, not just test documenta
 ### 1. New Engineer Onboarding
 ```bash
 # Generate HTML
-./testplan-viewer -i rhobs_test_plan_v2.json -o onboarding.html
+./testplan-viewer -i examples/camo/camo-testplan.json -o onboarding.html
 
 # Send onboarding.html to new team member
 # They work through tests, track progress in browser
@@ -235,7 +236,7 @@ git commit -m "Update learning guide"
 
 ### Adding Custom Concepts
 
-Edit `rhobs_test_plan_v2.json`:
+Edit your test plan JSON file:
 
 ```json
 "concepts": {
@@ -293,10 +294,10 @@ ls -la generator/templates/
 
 ```bash
 # Check JSON syntax
-cat rhobs_test_plan_v2.json | jq .
+cat examples/camo/camo-testplan.json | jq .
 
 # Validate against schema
-./testplan-viewer -i rhobs_test_plan_v2.json
+./testplan-viewer -i examples/camo/camo-testplan.json
 # Look for specific error messages
 ```
 
@@ -318,9 +319,9 @@ Potential features for future versions:
 
 To improve the test plan or viewer:
 
-1. **Edit JSON**: Update `rhobs_test_plan_v2.json` with new tests/concepts
-2. **Modify Template**: Edit `generator/templates/testplan.html` for UI changes
-3. **Extend Models**: Update `models/testplan.go` for new JSON fields
+1. **Edit JSON**: Create or update test plan JSON files in `examples/` directory
+2. **Modify Template**: Edit `internal/generator/templates/testplan.html` for UI changes
+3. **Extend Models**: Update `internal/models/testplan.go` for new JSON fields
 4. **Test**: Run `./testplan-viewer` and open in browser
 5. **Iterate**: Repeat until perfect
 
@@ -330,6 +331,5 @@ Internal Red Hat tooling - see team documentation for usage guidelines.
 
 ## Contact
 
-- **Slack**: #forum-rhobs-core
-- **Team**: SREP Observability
-- **Epic**: SREP-3109
+- **Team**: OpenShift SRE
+- See project documentation for specific team contacts

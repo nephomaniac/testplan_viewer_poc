@@ -3,7 +3,7 @@ package parser
 import (
 	"fmt"
 
-	"github.com/rhobs/testplan-viewer/internal/models"
+	"github.com/nephomaniac/testplan_tools_poc/internal/models"
 )
 
 // Validator validates test plan structure and relationships

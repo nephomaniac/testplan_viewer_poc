@@ -1,4 +1,4 @@
-module github.com/rhobs/testplan-viewer
+module github.com/nephomaniac/testplan_tools_poc
 
 go 1.22
 

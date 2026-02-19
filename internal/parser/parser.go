@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rhobs/testplan-viewer/internal/models"
+	"github.com/nephomaniac/testplan_tools_poc/internal/models"
 )
 
 // Parser handles test plan parsing and validation

@@ -31,7 +31,7 @@ clean:
 ## run: Build and run with default example
 run: build
 	@echo "🚀 Running with example..."
-	./$(BUILD_DIR)/$(BINARY_NAME) -i examples/rhobs_test_plan_v2.json -o testplan.html
+	./$(BUILD_DIR)/$(BINARY_NAME) -i examples/camo/camo-testplan.json -o testplan.html
 
 ## install: Install binary to $GOPATH/bin
 install:

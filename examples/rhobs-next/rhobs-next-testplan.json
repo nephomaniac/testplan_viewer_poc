@@ -1,0 +1,2104 @@
+{
+  "metadata": {
+    "document_title": "RHOBS Next and Synthetic Monitoring E2E Test Plan",
+    "version": "1.0",
+    "status": "draft",
+    "epic": "SREP-3109",
+    "purpose": "Establish automated end-to-end smoke tests for RHOBS Next components (rhobs-synthetics-api, rhobs-synthetics-agent, route-monitor-operator) using the osde2e testing framework. Verify metrics, logs, and synthetic monitoring probes work correctly after each code change.",
+    "target_audience": "SRE Engineers, QE Team, Platform Engineers, New Engineers Onboarding to RHOBS",
+    "estimated_total_time": "8-12 hours",
+    "learning_objectives": [
+      "Understand the complete RHOBS Next synthetic monitoring architecture",
+      "Learn how route-monitor-operator creates and manages synthetic probes",
+      "Master the probe lifecycle from creation to execution to metrics collection",
+      "Understand multi-tenant probe management via rhobs-synthetics-api",
+      "Learn how rhobs-synthetics-agent reconciles probes into Kubernetes resources",
+      "Understand metrics forwarding from blackbox-exporter to Prometheus/Thanos",
+      "Learn osde2e framework for automated E2E testing in stage environments"
+    ],
+    "date": "2026-02-18"
+  },
+  "prerequisites": {
+    "required_knowledge": [
+      {
+        "topic": "Basic Kubernetes concepts",
+        "level": "beginner",
+        "resources": [
+          "https://kubernetes.io/docs/tutorials/kubernetes-basics/"
+        ]
+      },
+      {
+        "topic": "OpenShift architecture and operators",
+        "level": "intermediate",
+        "resources": [
+          "https://docs.openshift.com/container-platform/latest/operators/understanding/olm-what-operators-are.html"
+        ]
+      },
+      {
+        "topic": "Prometheus metrics and PromQL",
+        "level": "intermediate",
+        "resources": [
+          "https://prometheus.io/docs/prometheus/latest/querying/basics/"
+        ]
+      },
+      {
+        "topic": "HTTP request/response concepts",
+        "level": "beginner",
+        "resources": []
+      },
+      {
+        "topic": "YAML and JSON syntax",
+        "level": "beginner",
+        "resources": []
+      }
+    ],
+    "required_access": [
+      {
+        "name": "OpenShift cluster admin",
+        "purpose": "Deploy and configure operators",
+        "how_to_get": "Request via service desk or use ROSA CLI",
+        "verification": "oc auth can-i create deployment"
+      },
+      {
+        "name": "Stage environment access",
+        "purpose": "Create HCP clusters for testing",
+        "how_to_get": "Request access to srep-dev sector",
+        "verification": "ocm list clusters"
+      },
+      {
+        "name": "Backplane access",
+        "purpose": "Login to clusters for testing",
+        "how_to_get": "Install ocm backplane plugin",
+        "verification": "ocm backplane --help"
+      },
+      {
+        "name": "GitHub access to RHOBS repos",
+        "purpose": "Clone and review source code",
+        "how_to_get": "Request org membership",
+        "verification": "git clone https://github.com/rhobs/api"
+      },
+      {
+        "name": "Prow/CI dashboard",
+        "purpose": "View test results",
+        "how_to_get": "SSO via Red Hat account",
+        "verification": "Visit https://prow.ci.openshift.org/"
+      }
+    ],
+    "environment_setup": {
+      "variables": {
+        "KUBECONFIG": "Path to cluster kubeconfig file",
+        "RHOBS_API_URL": "RHOBS Synthetics API endpoint URL",
+        "ACCESS_TOKEN": "OIDC token for API authentication"
+      },
+      "tools": [
+        {
+          "name": "oc",
+          "install": "https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html",
+          "verify": "oc version"
+        },
+        {
+          "name": "kubectl",
+          "install": "https://kubernetes.io/docs/tasks/tools/",
+          "verify": "kubectl version --client"
+        },
+        {
+          "name": "ocm",
+          "install": "https://github.com/openshift-online/ocm-cli",
+          "verify": "ocm version"
+        },
+        {
+          "name": "jq",
+          "install": "https://stedolan.github.io/jq/download/",
+          "verify": "jq --version"
+        },
+        {
+          "name": "curl",
+          "install": "Built-in on most systems",
+          "verify": "curl --version"
+        },
+        {
+          "name": "promtool",
+          "install": "https://prometheus.io/download/",
+          "verify": "promtool --version"
+        }
+      ]
+    }
+  },
+  "concepts": {
+    "synthetic_monitoring": {
+      "title": "Synthetic Monitoring",
+      "description": "Synthetic monitoring proactively tests system availability by simulating user interactions from external vantage points. Unlike passive monitoring which waits for real users to report issues, synthetic probes continuously execute predefined checks (HTTP requests, API calls, etc.) and measure response time, availability, and correctness.",
+      "why_it_matters": "Synthetic monitoring detects issues before customers do, provides SLA validation, establishes performance baselines, and enables testing from multiple geographic regions. For RHOBS, it ensures cluster routes remain accessible and responsive.",
+      "related_tests": [
+        "test_verify_route_monitor_deployment",
+        "test_create_routemonitor_cr",
+        "test_verify_probe_execution"
+      ],
+      "further_reading": [
+        {
+          "title": "Prometheus Blackbox Exporter",
+          "url": "https://github.com/prometheus/blackbox_exporter"
+        },
+        {
+          "title": "SRE Book - Monitoring Distributed Systems",
+          "url": "https://sre.google/sre-book/monitoring-distributed-systems/"
+        }
+      ]
+    },
+    "route_monitor_operator": {
+      "title": "Route Monitor Operator (RMO)",
+      "description": "An OpenShift operator that watches for RouteMonitor and ClusterUrlMonitor custom resources and automatically configures synthetic probes. For standard clusters, it creates ServiceMonitor resources that configure Prometheus to scrape blackbox-exporter. For HyperShift HostedControlPlanes, it creates probe definitions in the RHOBS Synthetics API.",
+      "why_it_matters": "RMO automates probe creation, eliminating manual configuration. It bridges the gap between cluster routes (what needs monitoring) and monitoring infrastructure (how to monitor it), enabling declarative monitoring-as-code.",
+      "related_tests": [
+        "test_verify_route_monitor_deployment",
+        "test_create_routemonitor_cr"
+      ],
+      "further_reading": [
+        {
+          "title": "RMO GitHub Repository",
+          "url": "https://github.com/openshift/route-monitor-operator"
+        },
+        {
+          "title": "Kubernetes Operators",
+          "url": "https://kubernetes.io/docs/concepts/extend-kubernetes/operator/"
+        }
+      ]
+    },
+    "rhobs_synthetics_api": {
+      "title": "RHOBS Synthetics API",
+      "description": "A multi-tenant central repository for probe configurations, built on Observatorium. It provides RESTful endpoints for creating, listing, updating, and deleting probe definitions. Each probe belongs to a tenant and includes target URL, labels, and execution status. The API enforces authentication via OIDC tokens and authorization via tenant-based access control.",
+      "why_it_matters": "The API decouples probe definition (what to monitor) from probe execution (where monitoring happens). Multiple agents can subscribe to the same API, enabling centralized configuration with distributed execution. This is critical for HyperShift where management clusters run agents to monitor spoke cluster routes.",
+      "related_tests": [
+        "test_create_probe_via_api",
+        "test_verify_probe_status_update",
+        "test_api_multi_tenancy"
+      ],
+      "further_reading": [
+        {
+          "title": "RHOBS Synthetics API Repository",
+          "url": "https://github.com/rhobs/api"
+        },
+        {
+          "title": "Multi-Tenancy in Kubernetes",
+          "url": "https://kubernetes.io/docs/concepts/security/multi-tenancy/"
+        }
+      ]
+    },
+    "rhobs_synthetics_agent": {
+      "title": "RHOBS Synthetics Agent",
+      "description": "A Kubernetes controller that reconciles probe definitions from the RHOBS Synthetics API into Kubernetes resources. It polls one or more API endpoints periodically, validates probe URLs via HTTP HEAD requests, creates Probe custom resources, manages blackbox-exporter deployments, and updates probe status back to the API (pending → active → running).",
+      "why_it_matters": "The agent is the execution engine that transforms probe definitions into running checks. It handles probe lifecycle, URL validation (prevents creating probes for broken endpoints), deduplication (when same probe appears in multiple APIs), and status feedback (critical for monitoring the monitoring system).",
+      "related_tests": [
+        "test_verify_agent_deployment",
+        "test_agent_probe_reconciliation",
+        "test_url_validation"
+      ],
+      "further_reading": [
+        {
+          "title": "RHOBS Synthetics Agent Repository",
+          "url": "https://github.com/rhobs/rhobs-synthetics-agent"
+        },
+        {
+          "title": "Kubernetes Controllers",
+          "url": "https://kubernetes.io/docs/concepts/architecture/controller/"
+        }
+      ]
+    },
+    "probe_custom_resource": {
+      "title": "Probe Custom Resource",
+      "description": "A Kubernetes Custom Resource Definition (CRD) representing a single synthetic probe check. It specifies the target URL, HTTP method, expected status code, timeout, interval, and labels. The blackbox-exporter operator watches for Probe resources and configures blackbox-exporter to execute the checks.",
+      "why_it_matters": "Probe CRs provide a declarative, Kubernetes-native way to define monitoring checks. They integrate with GitOps workflows, support kubectl operations, and enable status tracking via .status subresource. This makes probes observable, auditable, and version-controlled.",
+      "related_tests": [
+        "test_create_probe_cr_manually",
+        "test_verify_probe_cr_status"
+      ],
+      "further_reading": [
+        {
+          "title": "Kubernetes Custom Resources",
+          "url": "https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/"
+        }
+      ]
+    },
+    "blackbox_exporter": {
+      "title": "Blackbox Exporter",
+      "description": "A Prometheus exporter that executes probes (HTTP, TCP, DNS, ICMP) and exports metrics about probe results. It receives probe configurations, executes checks at specified intervals, and exposes metrics like probe_success (0/1), probe_duration_seconds, and probe_http_status_code. Prometheus scrapes these metrics for alerting and dashboarding.",
+      "why_it_matters": "Blackbox-exporter is the actual probe execution engine. It handles HTTP redirects, SSL verification, timeout handling, and various HTTP methods. Its metrics enable alerting on probe failures and tracking performance trends over time.",
+      "related_tests": [
+        "test_verify_blackbox_exporter_deployment",
+        "test_verify_probe_metrics"
+      ],
+      "further_reading": [
+        {
+          "title": "Prometheus Blackbox Exporter",
+          "url": "https://github.com/prometheus/blackbox_exporter"
+        },
+        {
+          "title": "Prometheus Exporters",
+          "url": "https://prometheus.io/docs/instrumenting/exporters/"
+        }
+      ]
+    },
+    "hostedcontrolplane": {
+      "title": "HyperShift HostedControlPlane",
+      "description": "HyperShift's HostedControlPlane resource represents an OpenShift control plane running as pods in a management cluster, separate from the data plane (worker nodes). Each HostedControlPlane has an API endpoint URL that needs monitoring. RMO watches for HostedControlPlane resources and automatically creates RHOBS API probe definitions for the cluster's API endpoint.",
+      "why_it_matters": "HyperShift enables dense multi-tenancy by running many control planes on shared infrastructure. Monitoring HostedControlPlane API endpoints via RHOBS ensures cluster availability from external vantage points, critical for detecting network partitions or control plane failures.",
+      "related_tests": [
+        "test_hostedcontrolplane_probe_creation"
+      ],
+      "further_reading": [
+        {
+          "title": "HyperShift Documentation",
+          "url": "https://hypershift-docs.netlify.app/"
+        }
+      ]
+    },
+    "osde2e_framework": {
+      "title": "OSDe2e Testing Framework",
+      "description": "OpenShift Dedicated's end-to-end testing framework. It provides utilities for creating clusters in stage environments, installing operators, running test suites, collecting logs, and reporting results to Prow/CI. Tests are written in Go using ginkgo/gomega BDD style and execute in CI pipelines after code merges.",
+      "why_it_matters": "osde2e automates the full test lifecycle: provision cluster → install operators → run tests → collect results → cleanup. This enables continuous validation of RHOBS Next components with every code change, catching regressions early before they reach production.",
+      "related_tests": [
+        "test_osde2e_cluster_creation",
+        "test_osde2e_smoke_suite"
+      ],
+      "further_reading": [
+        {
+          "title": "osde2e Repository",
+          "url": "https://github.com/openshift/osde2e"
+        },
+        {
+          "title": "Ginkgo BDD Framework",
+          "url": "https://onsi.github.io/ginkgo/"
+        }
+      ]
+    },
+    "prometheus_servicemonitor": {
+      "title": "Prometheus ServiceMonitor",
+      "description": "A Custom Resource that declaratively configures Prometheus to scrape metrics from Kubernetes services. It specifies the service selector, port, path, interval, and scrape timeout. The Prometheus Operator watches for ServiceMonitor resources and updates Prometheus configuration dynamically without restarts.",
+      "why_it_matters": "ServiceMonitors enable declarative monitoring configuration. RMO creates ServiceMonitors to tell Prometheus where to scrape blackbox-exporter metrics. This automates the 'monitoring the monitoring' setup.",
+      "related_tests": [
+        "test_verify_servicemonitor_creation"
+      ],
+      "further_reading": [
+        {
+          "title": "Prometheus Operator",
+          "url": "https://prometheus-operator.dev/"
+        }
+      ]
+    },
+    "metrics_forwarding": {
+      "title": "Metrics Forwarding to RHOBS",
+      "description": "The process of sending cluster metrics from local Prometheus to centralized RHOBS (Regional Hub for Observability). Prometheus is configured with remote_write rules that send time-series data to Thanos receivers. Each metric includes tenant labels for multi-tenancy isolation.",
+      "why_it_matters": "Centralized metrics enable cross-cluster querying, long-term retention (local Prometheus retains 2-7 days), and unified dashboards. RHOBS provides observability-as-a-service for all OpenShift Dedicated and ROSA clusters.",
+      "related_tests": [
+        "test_verify_metrics_forwarding",
+        "test_query_rhobs_metrics"
+      ],
+      "further_reading": [
+        {
+          "title": "Prometheus Remote Write",
+          "url": "https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write"
+        },
+        {
+          "title": "Thanos Architecture",
+          "url": "https://thanos.io/tip/thanos/design.md/"
+        }
+      ]
+    }
+  },
+  "learning_path": {
+    "description": "Progressive learning path from basic deployment validation to advanced multi-component E2E testing. Start with understanding individual components, then build up to full integration scenarios.",
+    "sequence": [
+      "test_verify_route_monitor_deployment",
+      "test_create_routemonitor_cr",
+      "test_verify_probe_metrics",
+      "test_create_probe_via_api",
+      "test_cleanup_routemonitor_cr"
+    ],
+    "alternative_paths": {
+      "quick_validation": [
+        "test_verify_route_monitor_deployment",
+        "test_verify_probe_metrics"
+      ],
+      "modifies_state_only": [
+        "test_create_routemonitor_cr",
+        "test_create_probe_via_api",
+        "test_cleanup_routemonitor_cr"
+      ]
+    }
+  },
+  "testcases": {
+    "test_verify_route_monitor_deployment": {
+      "metadata": {
+        "id": "test_verify_route_monitor_deployment",
+        "name": "Verify Route Monitor Operator Deployment",
+        "title": "Verify RMO Installation and Health",
+        "category": "read-only",
+        "difficulty": "beginner",
+        "estimated_time": "15 minutes",
+        "hands_on_percentage": 80,
+        "system_impact": {
+          "type": "none",
+          "description": "Read-only verification with no system modifications",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "none",
+          "risk_level": "minimal"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "backup_test": null,
+          "requires_cleanup": false,
+          "cleanup_test": null,
+          "restores_state": true
+        },
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "warning_message": null,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand how OpenShift operators are deployed and managed",
+          "Learn to verify operator health using kubectl/oc commands",
+          "Identify the Route Monitor Operator namespace and deployment structure",
+          "Recognize healthy vs unhealthy operator states",
+          "Understand operator pod lifecycle and readiness checks"
+        ],
+        "concepts_covered": [
+          "route_monitor_operator",
+          "synthetic_monitoring"
+        ],
+        "skills_gained": [
+          "Verifying operator deployments in OpenShift",
+          "Reading Kubernetes deployment status and conditions",
+          "Inspecting pod logs for troubleshooting",
+          "Understanding operator namespaces and resource isolation"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Not specifying the namespace with -n flag",
+            "consequence": "Command fails with 'not found' error even though operator exists",
+            "how_to_avoid": "Always include -n openshift-route-monitor-operator or use -A to search all namespaces"
+          },
+          {
+            "mistake": "Assuming 'Running' pod status means operator is healthy",
+            "consequence": "Operator pod may be running but not ready (failing readiness checks)",
+            "how_to_avoid": "Check READY column (should show 1/1) and STATUS (should be Running)"
+          },
+          {
+            "mistake": "Ignoring recent restart counts",
+            "consequence": "Missing crash loops that indicate configuration or permission issues",
+            "how_to_avoid": "Check RESTARTS column - values > 0 indicate recent failures worth investigating"
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Verify that the Route Monitor Operator is correctly installed, running, and healthy in the OpenShift cluster before proceeding with probe creation tests.",
+        "duration": "15 minutes",
+        "dependencies": [],
+        "prerequisites": [
+          "OpenShift CLI (oc) installed and configured",
+          "Cluster admin access or permissions to view openshift-route-monitor-operator namespace",
+          "Route Monitor Operator installed via OLM or manual deployment"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Verify Route Monitor Operator namespace exists",
+            "learning_note": "Operators in OpenShift are typically deployed in dedicated namespaces for isolation and security. The route (An OpenShift resource that exposes a service at a hostname for external access via the router) [learn more](https://docs.openshift.com/container-platform/latest/networking/routes/route-configuration.html) Monitor Operator uses the openshift-route-monitor-operator namespace by convention. Verifying the namespace exists confirms the operator installation process started successfully.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get namespace openshift-route-monitor-operator",
+            "expected_output": "NAME STATUS AGE\nopenshift-route-monitor-operator Active 5d",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): namespaces \"openshift-route-monitor-operator\" not found",
+                "cause": "Route Monitor Operator not installed or installed in different namespace",
+                "solution": "Verify operator installation. Try: oc get namespaces | grep route-monitor to find the actual namespace"
+              }
+            ]
+          },
+          {
+            "step_number": 2,
+            "title": "Check Route Monitor Operator deployment",
+            "learning_note": "A deployment (A Kubernetes resource that manages a replicated set of Pods and provides declarative updates) [learn more](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) is a Kubernetes resource that manages ReplicaSets and Pods, ensuring the specified number of pod replicas are running. The READY column shows current/desired replicas (should be 1/1). The UP-TO-DATE column indicates pods running the latest pod template. The AVAILABLE column shows pods passing readiness checks and able to serve traffic.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get deployment route -monitor-operator -n openshift-route-monitor-operator",
+            "expected_output": "NAME READY UP-TO-DATE AVAILABLE AGE\nroute-monitor-operator 1/1 1 1 5d",
+            "common_errors": [
+              {
+                "error": "READY shows 0/1",
+                "cause": "Operator pod is not ready - could be image pull errors, crash loops, or failing health checks",
+                "solution": "Check pod status: oc get pods -n openshift-route-monitor-operator and inspect logs: oc logs deployment/route-monitor-operator -n openshift-route-monitor-operator"
+              },
+              {
+                "error": "Error from server (NotFound): deployments.apps \"route-monitor-operator\" not found",
+                "cause": "Operator may use different deployment name or be deployed via StatefulSet/DaemonSet",
+                "solution": "List all deployments in namespace: oc get deployments -n openshift-route-monitor-operator"
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Verify operator pod is running",
+            "learning_note": "Pods are the smallest deployable units in Kubernetes, containing one or more containers. The READY column shows ready/total containers (1/1 means the single container is ready). STATUS indicates pod (The smallest deployable unit in Kubernetes - a group of one or more containers with shared storage and network) [learn more](https://kubernetes.io/docs/concepts/workloads/pods/) phase (Running is expected). RESTARTS shows crash count - 0 is ideal, higher numbers warrant investigation.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get pods -n openshift-route-monitor-operator",
+            "expected_output": "NAME READY STATUS RESTARTS AGE\nroute-monitor-operator-7d8f9c5b6d-xk2mp 1/1 Running 0 5d",
+            "common_errors": [
+              {
+                "error": "STATUS shows ImagePullBackOff or ErrImagePull",
+                "cause": "Cannot pull operator container image - invalid image reference, authentication failure, or network issue",
+                "solution": "Describe pod for events: oc describe pod -n openshift-route-monitor-operator <pod-name>"
+              },
+              {
+                "error": "STATUS shows CrashLoopBackOff",
+                "cause": "Operator container starts then crashes repeatedly - usually configuration error or missing permissions",
+                "solution": "Check logs: oc logs -n openshift-route-monitor-operator <pod-name> --previous (use --previous to see logs from crashed container)"
+              },
+              {
+                "error": "READY shows 0/1",
+                "cause": "Container running but failing readiness probe - operator may be starting up or experiencing errors",
+                "solution": "Wait 30 seconds and check again. If persists, check logs for readiness endpoint errors"
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Inspect operator logs for activity",
+            "learning_note": "Operator (A Kubernetes controller that extends the API to create, configure, and manage complex stateful applications using custom resources) [learn more](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/) logs provide real-time insight into the controller's operation. Healthy operators log reconciliation events, resource creation/updates, and status changes. Error logs indicate permission issues, API failures, or configuration problems. The --tail=50 flag limits output to last 50 lines for readability.\n\n**Debugging tip:** Operator logs follow a pattern: watch events (resource created/updated/deleted), reconciliation start, validation, child resource creation, reconciliation success/failure. Understanding this pattern helps you quickly identify where reconciliation failed.",
+            "command": "oc logs deployment/route-monitor-operator -n openshift-route-monitor-operator --tail=50",
+            "expected_output": "2026-02-18T10:15:23Z INFO controller-runtime.manager starting metrics server\n2026-02-18T10:15:23Z INFO setup starting manager\n2026-02-18T10:15:24Z INFO controller.routemonitor Starting EventSource\n2026-02-18T10:15:24Z INFO controller.routemonitor Starting Controller\n2026-02-18T10:15:24Z INFO controller.routemonitor Starting workers",
+            "common_errors": [
+              {
+                "error": "ERROR unable to create controller: failed to get API group resources",
+                "cause": "Operator lacks RBAC permissions to watch required resources or CRDs not installed",
+                "solution": "Verify CRDs exist: oc get crd | grep routemonitor. Check operator ClusterRole and ClusterRoleBinding"
+              },
+              {
+                "error": "ERROR Reconciler error: Unauthorized",
+                "cause": "ServiceAccount lacks permissions to create/update resources",
+                "solution": "Check operator ServiceAccount and associated RBAC: oc get clusterrolebinding | grep route-monitor"
+              }
+            ]
+          },
+          {
+            "step_number": 5,
+            "title": "Verify RouteMonitor CRD is installed",
+            "learning_note": "Custom Resource (A Kubernetes API extension that allows you to define custom object types beyond the built-in resources like Pods and Services) [learn more](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) Definitions (CRDs extend the Kubernetes API with new resource types. The RouteMonitor CRD defines the schema for RouteMonitor resources. The CRD must exist before creating RouteMonitor instances. The ESTABLISHED column should show True, indicating the CRD is registered and ready for use.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get CRD routemonitors.monitoring.openshift.io",
+            "expected_output": "NAME CREATED AT\nroutemonitors.monitoring.openshift.io 2026-02-13T15:30:45Z",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): customresourcedefinitions.apiextensions.k8s.io \"routemonitors.monitoring.openshift.io\" not found",
+                "cause": "RouteMonitor CRD not installed - operator installation incomplete",
+                "solution": "Reinstall operator or manually apply CRD from operator repository: oc apply -f https://raw.githubusercontent.com/openshift/route-monitor-operator/main/config/crd/bases/monitoring.openshift.io_routemonitors.yaml"
+              }
+            ]
+          },
+          {
+            "step_number": 6,
+            "title": "Verify RouteMonitor was created",
+            "learning_note": "This command lists all RouteMonitor (A custom resource that declares a route should be monitored with synthetic probes) [learn more](https://github.com/openshift/route-monitor-operator) Custom Resources across all namespaces. Even if no RouteMonitors exist yet, the command succeeding confirms the CRD is properly registered and the API server recognizes the resource type. The -A flag searches all namespaces (equivalent to --all-namespaces).\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get routemonitors -A",
+            "expected_output": "No resources found\n(OR if existing monitors present NAMESPACE NAME AGE\nopenshift-console console-monitor 5d",
+            "common_errors": [
+              {
+                "error": "error: the server doesn't have a resource type \"routemonitors\"",
+                "cause": "CRD not installed or API server hasn't registered it yet",
+                "solution": "Wait 10 seconds for API server to update, then retry. If persists, check CRD installation in previous step"
+              }
+            ]
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Namespace openshift-route-monitor-operator exists with STATUS Active",
+            "Deployment route-monitor-operator shows READY 1/1",
+            "Operator pod STATUS is Running with READY 1/1",
+            "Operator logs show controller started without errors",
+            "RouteMonitor CRD exists and is established",
+            "Command 'oc get routemonitors -A' succeeds (even if no resources found)"
+          ],
+          "what_success_looks_like": "All verification commands complete without errors. The operator deployment shows 1/1 ready replicas, the pod is running with 0 restarts, logs indicate successful controller startup, and the RouteMonitor CRD is registered. This confirms RMO is healthy and ready to reconcile RouteMonitor resources.",
+          "what_failure_looks_like": "Commands return NotFound errors, deployment shows 0/1 replicas, pod is in CrashLoopBackOff, logs contain permission errors or API failures, or CRD is missing. These indicate incomplete installation or configuration issues requiring remediation before proceeding."
+        }
+      },
+      "troubleshooting": {
+        "common_issues": [
+          {
+            "issue": "Operator pod stuck in Pending state",
+            "symptoms": "Pod STATUS shows Pending for > 2 minutes",
+            "possible_causes": [
+              "No worker nodes available",
+              "Insufficient CPU/memory resources",
+              "Node selector or affinity rules preventing scheduling",
+              "Pod security policies blocking pod creation"
+            ],
+            "diagnostic_steps": [
+              "oc describe pod -n openshift-route-monitor-operator <pod-name>",
+              "Look for Events section showing scheduling failures",
+              "Check node resources: oc describe nodes | grep -A 5 'Allocated resources'"
+            ],
+            "solutions": [
+              "Scale cluster to add worker nodes",
+              "Reduce operator resource requests in deployment",
+              "Remove node selector constraints",
+              "Update pod security policies"
+            ]
+          },
+          {
+            "issue": "Operator starts then crashes immediately",
+            "symptoms": "Pod RESTARTS count increasing, STATUS shows CrashLoopBackOff",
+            "possible_causes": [
+              "Missing environment variables",
+              "Invalid configuration ConfigMap",
+              "Insufficient RBAC permissions",
+              "Required CRDs not installed"
+            ],
+            "diagnostic_steps": [
+              "oc logs -n openshift-route-monitor-operator <pod-name> --previous",
+              "oc describe deployment route-monitor-operator -n openshift-route-monitor-operator",
+              "oc get clusterrole,clusterrolebinding | grep route-monitor"
+            ],
+            "solutions": [
+              "Review operator logs for specific error messages",
+              "Verify all required CRDs installed: oc get crd | grep monitoring.openshift.io",
+              "Check RBAC configuration matches operator requirements",
+              "Validate ConfigMap if operator uses one"
+            ]
+          },
+          {
+            "issue": "CRD installed but oc get routemonitors fails",
+            "symptoms": "CRD exists but API server doesn't recognize resource type",
+            "possible_causes": [
+              "API server hasn't refreshed resource cache",
+              "CRD has validation errors",
+              "CRD version mismatch with API server"
+            ],
+            "diagnostic_steps": [
+              "oc get crd routemonitors.monitoring.openshift.io -o yaml | grep -A 10 status",
+              "Check CRD conditions for Established=True",
+              "oc api-resources | grep routemonitor"
+            ],
+            "solutions": [
+              "Wait 30-60 seconds for API server cache refresh",
+              "Delete and reinstall CRD if validation errors present",
+              "Ensure CRD apiVersion matches cluster API server version"
+            ]
+          }
+        ]
+      },
+      "next_steps": {
+        "immediate": [
+          "Proceed to test_create_routemonitor_cr to create your first RouteMonitor resource",
+          "Explore operator configuration by examining deployment spec: oc get deployment route-monitor-operator -n openshift-route-monitor-operator -o yaml"
+        ],
+        "learning": [
+          "Read Route Monitor Operator architecture documentation",
+          "Understand Kubernetes operator pattern and controller-runtime framework",
+          "Review ServiceMonitor and Probe CRDs that RMO creates"
+        ],
+        "advanced": [
+          "Configure operator logging level for debugging",
+          "Set up operator metrics scraping and dashboards",
+          "Explore operator source code on GitHub: https://github.com/openshift/route-monitor-operator"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://github.com/openshift/route-monitor-operator",
+          "https://kubernetes.io/docs/concepts/extend-kubernetes/operator/",
+          "https://docs.openshift.com/container-platform/latest/operators/understanding/olm/olm-understanding-olm.html",
+          "https://sdk.operatorframework.io/docs/building-operators/golang/tutorial/#debugging"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_create_routemonitor_cr": {
+      "metadata": {
+        "id": "test_create_routemonitor_cr",
+        "name": "Create RouteMonitor Custom Resource",
+        "title": "Create RouteMonitor CR to Test Probe Creation",
+        "category": "modifies-state",
+        "difficulty": "intermediate",
+        "estimated_time": "25 minutes",
+        "hands_on_percentage": 85,
+        "system_impact": {
+          "type": "creates_resources",
+          "description": "Creates RouteMonitor CR, ServiceMonitor, and blackbox-exporter configuration. Prometheus begins scraping new metrics endpoint.",
+          "affected_resources": [
+            "RouteMonitor CR in test namespace",
+            "ServiceMonitor in openshift-route-monitor-operator namespace",
+            "Prometheus scrape configuration"
+          ],
+          "reversible": true,
+          "persistence": "until_cleanup",
+          "risk_level": "low"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "backup_test": null,
+          "requires_cleanup": true,
+          "cleanup_test": "test_cleanup_routemonitor_cr",
+          "restores_state": false
+        },
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": true,
+          "warning_message": "This test creates monitoring resources and increases Prometheus cardinality. Run in test/stage environments only.",
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand RouteMonitor CR structure and specification",
+          "Learn how RMO reconciles RouteMonitor resources into ServiceMonitors",
+          "Master the probe creation workflow from CR to metrics",
+          "Understand how Kubernetes watches trigger operator reconciliation",
+          "Learn to validate that operator actions completed successfully"
+        ],
+        "concepts_covered": [
+          "route_monitor_operator",
+          "synthetic_monitoring",
+          "prometheus_servicemonitor",
+          "blackbox_exporter"
+        ],
+        "skills_gained": [
+          "Writing YAML manifests for Custom Resources",
+          "Applying Kubernetes resources with oc/kubectl",
+          "Verifying operator reconciliation via created resources",
+          "Understanding owner references and resource cleanup",
+          "Troubleshooting CR validation errors"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Not specifying a valid route URL in the spec.route.url field",
+            "consequence": "RouteMonitor created but probe fails with connection errors",
+            "how_to_avoid": "Ensure the route exists and is accessible before creating the RouteMonitor. Test with curl first."
+          },
+          {
+            "mistake": "Creating RouteMonitor in wrong namespace",
+            "consequence": "RMO may not watch all namespaces, or ServiceMonitor created in unexpected location",
+            "how_to_avoid": "Check RMO's watch configuration. Use dedicated test namespace and verify with -n flag."
+          },
+          {
+            "mistake": "Forgetting to check ServiceMonitor creation after RouteMonitor is applied",
+            "consequence": "Assuming probe is active when reconciliation actually failed",
+            "how_to_avoid": "Always verify dependent resources (ServiceMonitor, Probe CR) after creating RouteMonitor."
+          },
+          {
+            "mistake": "Not waiting for operator reconciliation before validation",
+            "consequence": "Commands fail because operator hasn't processed the RouteMonitor yet",
+            "how_to_avoid": "Wait 10-30 seconds after oc apply before checking for created resources. Watch operator logs for reconciliation events."
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Create a RouteMonitor Custom Resource targeting a cluster route, verify the operator creates corresponding ServiceMonitor and configures Prometheus to scrape probe metrics.",
+        "duration": "25 minutes",
+        "dependencies": [
+          "test_verify_route_monitor_deployment"
+        ],
+        "prerequisites": [
+          "Route Monitor Operator healthy and running (test_verify_route_monitor_deployment passed)",
+          "Access to create resources in test namespace",
+          "Existing OpenShift route to monitor (e.g., console route)",
+          "Permissions to view ServiceMonitors in openshift-route-monitor-operator namespace"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Create test namespace for RouteMonitor",
+            "learning_note": "Isolating test resources in a dedicated namespace (A Kubernetes mechanism for isolating groups of resources within a single cluster) [learn more](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/) enables easy cleanup and prevents pollution of production namespaces. Namespaces provide scope for names, RBAC policies, and resource quotas. Using a consistent naming convention (e.g., rhobs-test-* helps identify test resources.",
+            "command": "oc create namespace rhobs-test-routemonitor",
+            "expected_output": "namespace/rhobs-test-routemonitor created",
+            "common_errors": [
+              {
+                "error": "Error from server (AlreadyExists): namespaces \"rhobs-test-routemonitor\" already exists",
+                "cause": "Namespace exists from previous test run that wasn't cleaned up",
+                "solution": "Either delete existing namespace: oc delete namespace rhobs-test-routemonitor, or use the existing namespace"
+              },
+              {
+                "error": "Error from server (Forbidden): namespaces is forbidden",
+                "cause": "Insufficient permissions to create namespaces",
+                "solution": "Request cluster-admin access or use existing namespace where you have admin permissions"
+              }
+            ]
+          },
+          {
+            "step_number": 2,
+            "title": "Identify target route to monitor",
+            "learning_note": "Routes expose services externally via hostname. The OpenShift console route is ideal for testing because it's always present and should return HTTP 200. The HOST column shows the URL to monitor. We'll use this in the RouteMonitor spec.route.url field.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get route console -n openshift-console",
+            "expected_output": "NAME HOST/PORT PATH SERVICES PORT TERMINATION WILDCARD\nconsole console-openshift-console.apps.cluster.example.com console https reencrypt/Redirect None",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): routes.route.openshift.io \"console\" not found",
+                "cause": "Console route missing or using different name",
+                "solution": "List all routes in namespace: oc get routes -n openshift-console, pick any accessible route"
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Create RouteMonitor YAML manifest",
+            "learning_note": "RouteMonitor is a Custom Resource (CR that extends Kubernetes API. The spec.route.url field specifies the target URL to probe. The spec.route.name and spec.route.namespace fields reference the Route object to monitor. Labels help organize and query RouteMonitors. This declarative manifest defines desired state; the operator makes it reality.",
+            "command": "cat > /tmp/routemonitor.yaml <<EOF\napiVersion: monitoring.openshift.io/v1alpha1\nkind: RouteMonitor\nmetadata:\n name: console-route-monitor\n namespace: rhobs-test-routemonitor\n labels:\n app: test-probe\n environment: test\nspec:\n route:\n name: console\n namespace: openshift-console\nEOF\ncat /tmp/routemonitor.yaml",
+            "expected_output": "apiVersion: monitoring.openshift.io/v1alpha1\nkind: RouteMonitor\nmetadata:\n name: console-route-monitor\n namespace: rhobs-test-routemonitor\n labels:\n app: test-probe\n environment: test\nspec:\n route:\n name: console\n namespace: openshift-console",
+            "common_errors": [
+              {
+                "error": "bash: /tmp/routemonitor.yaml: Permission denied",
+                "cause": "/tmp directory has restricted permissions",
+                "solution": "Use writable directory: ~/routemonitor.yaml or $PWD/routemonitor.yaml"
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Apply RouteMonitor custom resource",
+            "learning_note": "The 'oc apply' command creates or updates resources declaratively. It sends the YAML to the Kubernetes API server, which validates the schema against the RouteMonitor CRD (Custom Resource Definition - the schema that defines a new custom resource type in Kubernetes) [learn more](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/), then stores it in etcd. The API server then triggers watches, notifying the RMO controller that a new RouteMonitor exists. The operator reconciliation loop begins immediately.\n\n**What happens internally:** When you run `oc apply`, the command sends the YAML to the Kubernetes API server, which validates the schema against the CRD, stores it in etcd, and triggers any controllers watching this resource type. The operator's controller immediately sees this new object and begins reconciliation.",
+            "command": "oc apply -f /tmp/routemonitor.yaml",
+            "expected_output": "routemonitor.monitoring.openshift.io/console-route-monitor created",
+            "common_errors": [
+              {
+                "error": "error: unable to recognize \"/tmp/routemonitor.yaml\": no matches for kind \"RouteMonitor\" in version \"monitoring.openshift.io/v1alpha1\"",
+                "cause": "RouteMonitor CRD not installed or wrong apiVersion",
+                "solution": "Verify CRD exists: oc get crd routemonitors.monitoring.openshift.io. Check operator installation."
+              },
+              {
+                "error": "The RouteMonitor \"console-route-monitor\" is invalid: spec.route.name: Required value",
+                "cause": "Required field missing in YAML spec",
+                "solution": "Ensure spec.route.name and spec.route.namespace fields are present and not empty"
+              }
+            ]
+          },
+          {
+            "step_number": 5,
+            "title": "Identify target route to monitor",
+            "learning_note": "Listing the RouteMonitor confirms it was stored in the cluster's API server. The AGE column shows time since creation. At this point the resource exists but reconciliation (The control loop process where a controller compares desired state (spec) with actual state and takes actions to converge them) [learn more](https://kubernetes.io/docs/concepts/architecture/controller/) may not be complete. The operator watches for new RouteMonitors and queues them for processing.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get routemonitor console-route-monitor -n rhobs-test-routemonitor",
+            "expected_output": "NAME AGE\nconsole-route-monitor 5s",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): routemonitors.monitoring.openshift.io \"console-route-monitor\" not found",
+                "cause": "Apply command failed silently or resource created in wrong namespace",
+                "solution": "Check previous command output for errors. Try: oc get routemonitors -A | grep console"
+              }
+            ]
+          },
+          {
+            "step_number": 6,
+            "title": "Identify target route to monitor",
+            "learning_note": "The .status subresource contains runtime state managed by the operator. The status.conditions array shows reconciliation progress. Look for conditions like 'Ready=True' or 'ServiceMonitorCreated=True'. If empty, the operator hasn't reconciled yet. The -o yaml flag outputs full resource including status.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get routemonitor console-route-monitor -n rhobs-test-routemonitor -o yaml | grep -A 20 status:",
+            "expected_output": "status:\n conditions:\n - lastTransitionTime: \"2026-02-18T10:30:15Z\"\n message: ServiceMonitor created successfully\n reason: ServiceMonitorCreated\n status: \"True\"\n type: Ready",
+            "common_errors": [
+              {
+                "error": "status: {}",
+                "cause": "Operator hasn't reconciled RouteMonitor yet, or reconciliation failed",
+                "solution": "Wait 30 seconds then retry. Check operator logs: oc logs deployment/route-monitor-operator -n openshift-route-monitor-operator"
+              }
+            ]
+          },
+          {
+            "step_number": 7,
+            "title": "Identify target route to monitor",
+            "learning_note": "Kubernetes operators work asynchronously. The reconciliation loop typically completes within seconds but can take longer under load. Watching the resource shows real-time updates to status. Press Ctrl+C to stop watching once status shows Ready=True.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get routemonitor console-route-monitor -n rhobs-test-routemonitor --watch",
+            "expected_output": "NAME AGE\nconsole-route-monitor 10s\n(watch mode - wait for status updates, press Ctrl+C when ready)",
+            "common_errors": []
+          },
+          {
+            "step_number": 8,
+            "title": "Verify ServiceMonitor creation",
+            "learning_note": "RouteMonitor operator creates a ServiceMonitor (A Prometheus Operator resource that declares how to scrape metrics from Kubernetes services) [learn more](https://prometheus-operator.dev/docs/operator/design/) resource that configures Prometheus scraping. The ServiceMonitor name typically includes the RouteMonitor name. It resides in the operator namespace (openshift-route-monitor-operator and has an owner reference back to the RouteMonitor, enabling cascading deletion.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get servicemonitor -n openshift-route-monitor-operator | grep console",
+            "expected_output": "console-route-monitor 5m",
+            "common_errors": [
+              {
+                "error": "No resources found or grep returns no matches",
+                "cause": "ServiceMonitor not created yet, created with different name, or reconciliation failed",
+                "solution": "List all ServiceMonitors: oc get servicemonitor -n openshift-route-monitor-operator. Check RouteMonitor status for error messages."
+              },
+              {
+                "error": "Error from server (Forbidden): servicemonitors.monitoring.coreos.com is forbidden",
+                "cause": "Insufficient RBAC permissions to view ServiceMonitors",
+                "solution": "Request permissions or ask cluster admin to verify ServiceMonitor creation"
+              }
+            ]
+          },
+          {
+            "step_number": 9,
+            "title": "Inspect ServiceMonitor configuration",
+            "learning_note": "ServiceMonitor spec defines how Prometheus (An open-source monitoring system with a time-series database that collects and stores metrics) [learn more](https://prometheus.io/docs/introduction/overview/) scrapes metrics. The spec.selector field matches Services by labels. The spec.endpoints array specifies port, path, interval, and scrape timeout. The metadata.ownerReferences field links to the RouteMonitor, enabling Kubernetes to delete this ServiceMonitor if the RouteMonitor is deleted (cascading deletion).\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get servicemonitor console-route-monitor -n openshift-route-monitor-operator -o yaml",
+            "expected_output": "apiVersion: monitoring.coreos.com/v1\nkind: ServiceMonitor\nmetadata:\n name: console-route-monitor\n namespace: openshift-route-monitor-operator\n ownerReferences:\n - apiVersion: monitoring.openshift.io/v1alpha1\n kind: RouteMonitor\n name: console-route-monitor\n ...\nspec:\n endpoints:\n - interval: 30s\n path: /probe\n ...",
+            "common_errors": []
+          },
+          {
+            "step_number": 10,
+            "title": "Inspect operator logs for activity",
+            "learning_note": "Operator logs provide detailed insight into reconciliation logic. Look for log entries mentioning the RouteMonitor name (console-route-monitor). Successful reconciliation logs include 'Created ServiceMonitor' or 'Reconciliation complete'. Error logs indicate validation failures, permission issues, or API errors that prevent ServiceMonitor creation.\n\n**Debugging tip:** Operator logs follow a pattern: watch events (resource created/updated/deleted), reconciliation start, validation, child resource creation, reconciliation success/failure. Understanding this pattern helps you quickly identify where reconciliation failed.",
+            "command": "oc logs deployment/route-monitor-operator -n openshift-route-monitor-operator --tail=100 | grep console-route-monitor",
+            "expected_output": "2026-02-18T10:30:15Z INFO controller.routemonitor Reconciling RouteMonitor {\"name\": \"console-route-monitor\", \"namespace\": \"rhobs-test-routemonitor\"}\n2026-02-18T10:30:16Z INFO controller.routemonitor Created ServiceMonitor {\"servicemonitor\": \"console-route-monitor\"}",
+            "common_errors": [
+              {
+                "error": "ERROR controller.routemonitor Failed to create ServiceMonitor: Unauthorized",
+                "cause": "Operator ServiceAccount lacks permissions to create ServiceMonitors",
+                "solution": "Check operator RBAC: oc get clusterrole,clusterrolebinding | grep route-monitor-operator"
+              }
+            ]
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "RouteMonitor CR exists with name console-route-monitor in rhobs-test-routemonitor namespace",
+            "RouteMonitor status.conditions shows Ready=True",
+            "ServiceMonitor exists in openshift-route-monitor-operator namespace",
+            "ServiceMonitor has ownerReference pointing to RouteMonitor",
+            "Operator logs show successful reconciliation without errors"
+          ],
+          "what_success_looks_like": "The RouteMonitor resource is created and the operator successfully reconciles it by creating a ServiceMonitor. The RouteMonitor status shows Ready=True. Prometheus is now configured to scrape probe metrics for the console route. No errors appear in operator logs.",
+          "what_failure_looks_like": "RouteMonitor exists but status is empty or shows error conditions. No ServiceMonitor created. Operator logs contain permission errors, validation failures, or API errors. RouteMonitor status.conditions may show Ready=False with error message."
+        }
+      },
+      "troubleshooting": {
+        "common_issues": [
+          {
+            "issue": "RouteMonitor created but ServiceMonitor never appears",
+            "symptoms": "RouteMonitor exists, 5+ minutes passed, no ServiceMonitor created",
+            "possible_causes": [
+              "Operator not watching the RouteMonitor namespace",
+              "Operator reconciliation failing silently",
+              "RBAC permissions preventing ServiceMonitor creation",
+              "Operator pod not running or crash looping"
+            ],
+            "diagnostic_steps": [
+              "Check operator pod status: oc get pods -n openshift-route-monitor-operator",
+              "Check operator logs: oc logs deployment/route-monitor-operator -n openshift-route-monitor-operator --tail=200",
+              "Verify RouteMonitor status: oc describe routemonitor console-route-monitor -n rhobs-test-routemonitor",
+              "Check operator ClusterRole: oc describe clusterrole route-monitor-operator"
+            ],
+            "solutions": [
+              "Restart operator pod: oc delete pod -l app=route-monitor-operator -n openshift-route-monitor-operator",
+              "Verify operator watches all namespaces or configure namespace watch list",
+              "Fix RBAC permissions if operator logs show Unauthorized errors",
+              "Manually trigger reconciliation by adding annotation: oc annotate routemonitor console-route-monitor reconcile=true -n rhobs-test-routemonitor"
+            ]
+          },
+          {
+            "issue": "ServiceMonitor created but with wrong configuration",
+            "symptoms": "ServiceMonitor exists but spec.selector or spec.endpoints fields incorrect",
+            "possible_causes": [
+              "RouteMonitor spec has invalid or missing fields",
+              "Operator version mismatch with CRD version",
+              "Bug in operator reconciliation logic"
+            ],
+            "diagnostic_steps": [
+              "Compare RouteMonitor spec with expected format: oc get routemonitor console-route-monitor -n rhobs-test-routemonitor -o yaml",
+              "Check ServiceMonitor spec: oc get servicemonitor console-route-monitor -n openshift-route-monitor-operator -o yaml",
+              "Review operator version: oc get deployment route-monitor-operator -n openshift-route-monitor-operator -o yaml | grep image:"
+            ],
+            "solutions": [
+              "Delete and recreate RouteMonitor with corrected spec",
+              "Update operator to latest version if bug is known",
+              "Manually edit ServiceMonitor if operator doesn't support automatic correction"
+            ]
+          },
+          {
+            "issue": "RouteMonitor validation errors during apply",
+            "symptoms": "oc apply fails with schema validation error",
+            "possible_causes": [
+              "YAML syntax error (indentation, missing colons)",
+              "Required field missing in spec",
+              "Invalid value for enum field",
+              "apiVersion or kind mismatch with installed CRD"
+            ],
+            "diagnostic_steps": [
+              "Validate YAML syntax with online validator or yamllint",
+              "Check CRD schema: oc get crd routemonitors.monitoring.openshift.io -o yaml | grep -A 50 openAPIV3Schema",
+              "Review error message for specific field mentioned"
+            ],
+            "solutions": [
+              "Fix YAML indentation - use 2 spaces, not tabs",
+              "Ensure all required fields present: spec.route.name, spec.route.namespace",
+              "Verify apiVersion matches CRD: oc get crd routemonitors.monitoring.openshift.io -o yaml | grep versions -A 5",
+              "Use oc explain routemonitor.spec to see valid fields and types"
+            ]
+          }
+        ]
+      },
+      "next_steps": {
+        "immediate": [
+          "Proceed to test_verify_probe_metrics to confirm Prometheus is scraping probe metrics",
+          "Do NOT delete RouteMonitor yet - it's needed for dependent tests",
+          "After all tests complete, run test_cleanup_routemonitor_cr to remove test resources"
+        ],
+        "learning": [
+          "Study ServiceMonitor CRD schema and Prometheus Operator documentation",
+          "Understand Kubernetes owner references and cascading deletion",
+          "Learn how Prometheus service discovery works with ServiceMonitors",
+          "Explore RouteMonitor CRD source code to understand reconciliation logic"
+        ],
+        "advanced": [
+          "Create RouteMonitors for multiple routes and observe operator behavior",
+          "Configure custom probe intervals and timeouts in RouteMonitor spec",
+          "Set up alerts based on RouteMonitor probe failures",
+          "Implement GitOps workflow for RouteMonitor management with ArgoCD/Flux"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://github.com/openshift/route-monitor-operator/blob/main/README.md",
+          "https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/",
+          "https://prometheus-operator.dev/docs/operator/design/#servicemonitor",
+          "https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_cleanup_routemonitor_cr": {
+      "metadata": {
+        "id": "test_cleanup_routemonitor_cr",
+        "name": "Cleanup RouteMonitor Test Resources",
+        "title": "Clean up resources created by test_create_routemonitor_cr",
+        "category": "cleanup",
+        "difficulty": "beginner",
+        "estimated_time": "10 minutes",
+        "hands_on_percentage": 70,
+        "system_impact": {
+          "type": "deletes_resources",
+          "description": "Deletes RouteMonitor CR and test namespace. ServiceMonitor automatically deleted via owner references. Prometheus stops scraping probe metrics.",
+          "affected_resources": [
+            "RouteMonitor CR console-route-monitor",
+            "Namespace rhobs-test-routemonitor",
+            "ServiceMonitor console-route-monitor (cascading delete)"
+          ],
+          "reversible": false,
+          "persistence": "permanent",
+          "risk_level": "low"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "backup_test": null,
+          "requires_cleanup": false,
+          "cleanup_test": null,
+          "restores_state": true
+        },
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": true,
+          "warning_message": "This deletes test resources. Ensure you've completed all dependent tests first.",
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand Kubernetes cascading deletion and owner references",
+          "Learn proper resource cleanup procedures",
+          "Recognize the importance of namespace deletion for complete cleanup",
+          "Understand how operator finalizers affect deletion timing",
+          "Learn to verify cleanup completion"
+        ],
+        "concepts_covered": [
+          "route_monitor_operator"
+        ],
+        "skills_gained": [
+          "Deleting Kubernetes resources safely",
+          "Verifying cascading deletion worked correctly",
+          "Understanding deletion ordering and dependencies",
+          "Handling stuck deletions and finalizers"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Deleting namespace before verifying dependent tests completed",
+            "consequence": "Other tests fail because required RouteMonitor resources are gone",
+            "how_to_avoid": "Always run cleanup tests LAST after all dependent tests pass. Check learning_path sequence."
+          },
+          {
+            "mistake": "Not waiting for namespace deletion to complete",
+            "consequence": "Recreating namespace immediately fails with AlreadyExists error",
+            "how_to_avoid": "Wait for 'oc get namespace rhobs-test-routemonitor' to return NotFound before proceeding."
+          },
+          {
+            "mistake": "Assuming all resources deleted when namespace is deleted",
+            "consequence": "Cluster-scoped resources (ClusterRoles, CRDs) may persist",
+            "how_to_avoid": "Verify ClusterRoleBindings and other cluster-scoped resources if test created any."
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Safely delete all resources created during test_create_routemonitor_cr test, including RouteMonitor CR, test namespace, and verify cascading deletion of dependent resources like ServiceMonitor.",
+        "duration": "10 minutes",
+        "dependencies": [
+          "test_create_routemonitor_cr"
+        ],
+        "prerequisites": [
+          "test_create_routemonitor_cr completed successfully",
+          "All tests dependent on RouteMonitor have finished (test_verify_probe_metrics, etc.)",
+          "Permissions to delete namespaces and RouteMonitors"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Identify target route to monitor",
+            "learning_note": "Before deletion, inventory what will be removed. This prevents accidental deletion of production resources and provides a checklist for verification after cleanup. Document resource names, namespaces, and dependencies.",
+            "command": "oc get routemonitor console-route-monitor -n rhobs-test-routemonitor && oc get servicemonitor -n openshift-route-monitor-operator | grep console",
+            "expected_output": "NAME AGE\nconsole-route-monitor 30m\n\nconsole-route-monitor 30m",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): routemonitors.monitoring.openshift.io \"console-route-monitor\" not found",
+                "cause": "Resource already deleted or test_create_routemonitor_cr was not run",
+                "solution": "Verify test was run: oc get routemonitors -A. If resources don't exist, cleanup already done."
+              }
+            ]
+          },
+          {
+            "step_number": 2,
+            "title": "Inspect ServiceMonitor configuration",
+            "learning_note": "Owner references create parent-child relationships between resources. When a parent (RouteMonitor is deleted, Kubernetes automatically deletes children (ServiceMonitor via garbage collection. The ownerReferences field in ServiceMonitor metadata should reference the RouteMonitor. This enables clean, atomic cleanup.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get servicemonitor console-route-monitor -n openshift-route-monitor-operator -o yaml | grep -A 10 ownerReferences",
+            "expected_output": "ownerReferences:\n- apiVersion: monitoring.openshift.io/v1alpha1\n blockOwnerDeletion: true\n controller: true\n kind: RouteMonitor\n name: console-route-monitor\n uid: <uid>",
+            "common_errors": []
+          },
+          {
+            "step_number": 3,
+            "title": "Delete RouteMonitor custom resource",
+            "learning_note": "Deleting the RouteMonitor sends a DELETE request to the API server. If the resource has finalizers, it enters 'Terminating' state while finalizers run cleanup logic. Once finalizers complete, the resource is removed from etcd. Cascading deletion then removes owned resources (ServiceMonitor).",
+            "command": "oc delete routemonitor console-route-monitor -n rhobs-test-routemonitor",
+            "expected_output": "routemonitor.monitoring.openshift.io \"console-route-monitor\" deleted",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): routemonitors.monitoring.openshift.io \"console-route-monitor\" not found",
+                "cause": "Resource already deleted",
+                "solution": "This is acceptable - cleanup is idempotent. Continue to next step."
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Identify target route to monitor",
+            "learning_note": "Resources with finalizers may take seconds to minutes to delete while cleanup logic runs. The 'Terminating' state indicates deletion in progress. Wait for the resource to fully disappear before proceeding. If stuck in Terminating, check finalizers and operator logs.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get routemonitor console-route-monitor -n rhobs-test-routemonitor",
+            "expected_output": "Error from server (NotFound): routemonitors.monitoring.openshift.io \"console-route-monitor\" not found",
+            "common_errors": [
+              {
+                "error": "NAME shows but STATUS stuck in Terminating",
+                "cause": "Finalizer not completing or operator not processing deletion",
+                "solution": "Wait 60 seconds. If still stuck, check finalizers: oc get routemonitor console-route-monitor -n rhobs-test-routemonitor -o yaml | grep finalizers -A 5"
+              }
+            ]
+          },
+          {
+            "step_number": 5,
+            "title": "Verify ServiceMonitor creation",
+            "learning_note": "Because ServiceMonitor has an owner reference to RouteMonitor, Kubernetes garbage collection automatically deletes it when the parent is deleted. This happens asynchronously - usually within 5-10 seconds. Verify by confirming ServiceMonitor no longer exists.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get servicemonitor console-route-monitor -n openshift-route-monitor-operator",
+            "expected_output": "Error from server (NotFound): servicemonitors.monitoring.coreos.com \"console-route-monitor\" not found",
+            "common_errors": [
+              {
+                "error": "ServiceMonitor still exists after 30+ seconds",
+                "cause": "Owner reference missing or blockOwnerDeletion=false, garbage collection disabled, or API server lag",
+                "solution": "Manually delete: oc delete servicemonitor console-route-monitor -n openshift-route-monitor-operator"
+              }
+            ]
+          },
+          {
+            "step_number": 6,
+            "title": "Delete test namespace",
+            "learning_note": "Deleting a namespace deletes ALL resources within it. This is the most thorough cleanup method. Namespace deletion is asynchronous and can take 30-60 seconds as it finalizes all contained resources. Use this for complete test isolation cleanup.",
+            "command": "oc delete namespace rhobs-test-routemonitor",
+            "expected_output": "namespace \"rhobs-test-routemonitor\" deleted",
+            "common_errors": [
+              {
+                "error": "Error from server (Conflict): namespace rhobs-test-routemonitor is being deleted",
+                "cause": "Namespace already in deletion process",
+                "solution": "Wait for deletion to complete. Check status: oc get namespace rhobs-test-routemonitor"
+              }
+            ]
+          },
+          {
+            "step_number": 7,
+            "title": "Wait for namespace deletion to complete",
+            "learning_note": "Namespace deletion triggers cleanup of all resources inside it. The namespace enters 'Terminating' state while this happens. It must fully disappear before you can recreate it. Stuck namespaces indicate resources with finalizers that aren't completing - check for PVCs, custom resources with finalizers, or API services that are down.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get namespace rhobs-test-routemonitor",
+            "expected_output": "Error from server (NotFound): namespaces \"rhobs-test-routemonitor\" not found",
+            "common_errors": [
+              {
+                "error": "Namespace stuck in Terminating state for > 5 minutes",
+                "cause": "Resource with finalizer not completing, or API extension down",
+                "solution": "List resources in namespace: oc api-resources --verbs=list --namespaced -o name | xargs -n 1 oc get --show-kind --ignore-not-found -n rhobs-test-routemonitor. Manually remove finalizers if needed."
+              }
+            ]
+          },
+          {
+            "step_number": 8,
+            "title": "Query probe success metrics",
+            "learning_note": "When ServiceMonitor is deleted, the Prometheus Operator removes corresponding scrape configuration from Prometheus. Prometheus stops scraping the probe metrics endpoint. This happens automatically via the operator's reconciliation loop. Verify by checking Prometheus targets or querying for the metrics (should return no results).",
+            "command": "oc exec -n openshift-monitoring Prometheus -k8s-0 -- promtool query instant 'http://localhost:9090' 'probe_success{job=\"console-route-monitor\"}'",
+            "expected_output": "Error: no data points found (or empty result set)",
+            "common_errors": [
+              {
+                "error": "Metrics still present after deletion",
+                "cause": "Prometheus hasn't reloaded configuration yet, or metrics still in memory from last scrape",
+                "solution": "Wait 1-2 minutes for Prometheus config reload. Old metrics will age out after retention period."
+              }
+            ]
+          },
+          {
+            "step_number": 9,
+            "title": "Verify Route Monitor Operator namespace exists",
+            "learning_note": "Comprehensive post-cleanup verification ensures no orphaned resources remain. Check all namespaces where test resources could exist. Confirm RouteMonitors, ServiceMonitors, test namespaces, and any other test-created resources are gone. This prevents resource leaks and ensures clean test isolation.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get routemonitors -A | grep console-route-monitor && oc get servicemonitors -A | grep console-route-monitor && oc get namespace rhobs-test-routemonitor",
+            "expected_output": "(all commands should return NotFound errors or no matches)",
+            "common_errors": []
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "RouteMonitor console-route-monitor returns NotFound",
+            "ServiceMonitor console-route-monitor returns NotFound",
+            "Namespace rhobs-test-routemonitor returns NotFound",
+            "Prometheus no longer scraping console-route-monitor metrics",
+            "No orphaned resources remaining in cluster"
+          ],
+          "what_success_looks_like": "All resources created during test_create_routemonitor_cr are deleted. Commands to retrieve them return NotFound errors. Namespace is fully removed (not stuck in Terminating). ServiceMonitor was automatically deleted via cascading deletion. Prometheus configuration updated to remove probe scraping.",
+          "what_failure_looks_like": "Resources still exist after deletion commands. Namespace stuck in Terminating state. ServiceMonitor not deleted (orphaned). Commands to retrieve resources succeed when they should fail with NotFound."
+        }
+      },
+      "troubleshooting": {
+        "common_issues": [
+          {
+            "issue": "Namespace stuck in Terminating state",
+            "symptoms": "oc get namespace shows STATUS Terminating for > 5 minutes",
+            "possible_causes": [
+              "Resource with finalizer not completing deletion",
+              "API extension service down (CRD's API group unavailable)",
+              "PersistentVolumeClaims with protection finalizers",
+              "Third-party operator not processing deletions"
+            ],
+            "diagnostic_steps": [
+              "List all resources in namespace: oc api-resources --verbs=list --namespaced -o name | xargs -n 1 oc get --show-kind --ignore-not-found -n rhobs-test-routemonitor",
+              "Check namespace status: oc get namespace rhobs-test-routemonitor -o yaml | grep -A 10 status",
+              "Look for finalizers: oc get all -n rhobs-test-routemonitor -o json | jq '.items[].metadata.finalizers'",
+              "Check API services: oc get apiservices | grep False"
+            ],
+            "solutions": [
+              "Remove finalizers from stuck resources: oc patch <resource> <name> -n rhobs-test-routemonitor -p '{\"metadata\":{\"finalizers\":[]}}' --type=merge",
+              "Delete stuck resources individually: oc delete <resource> --grace-period=0 --force -n rhobs-test-routemonitor",
+              "Restart API extension if service down: oc delete pod -n <operator-namespace> <operator-pod>",
+              "As last resort, manually remove namespace finalizer: oc get namespace rhobs-test-routemonitor -o json | jq '.spec.finalizers = []' | oc replace --raw /api/v1/namespaces/rhobs-test-routemonitor/finalize -f -"
+            ]
+          },
+          {
+            "issue": "ServiceMonitor not deleted via cascading deletion",
+            "symptoms": "RouteMonitor deleted but ServiceMonitor still exists",
+            "possible_causes": [
+              "Owner reference missing or malformed",
+              "blockOwnerDeletion set to false",
+              "Garbage collection disabled on cluster",
+              "ServiceMonitor created manually without owner reference"
+            ],
+            "diagnostic_steps": [
+              "Check ServiceMonitor owner references: oc get servicemonitor console-route-monitor -n openshift-route-monitor-operator -o yaml | grep -A 10 ownerReferences",
+              "Verify garbage collection enabled: oc get deployment kube-controller-manager -n kube-system -o yaml | grep enable-garbage-collector"
+            ],
+            "solutions": [
+              "Manually delete ServiceMonitor: oc delete servicemonitor console-route-monitor -n openshift-route-monitor-operator",
+              "Wait longer - garbage collection may be delayed under load",
+              "Restart kube-controller-manager if garbage collection is malfunctioning"
+            ]
+          },
+          {
+            "issue": "Cannot delete RouteMonitor - stuck in Terminating",
+            "symptoms": "RouteMonitor shows STATUS Terminating for > 2 minutes",
+            "possible_causes": [
+              "Finalizer in RouteMonitor not completing",
+              "Operator not running or not processing deletion hooks",
+              "Webhook admission controller blocking deletion"
+            ],
+            "diagnostic_steps": [
+              "Check RouteMonitor finalizers: oc get routemonitor console-route-monitor -n rhobs-test-routemonitor -o yaml | grep finalizers -A 5",
+              "Check operator logs: oc logs deployment/route-monitor-operator -n openshift-route-monitor-operator --tail=100",
+              "Check validating webhooks: oc get validatingwebhookconfigurations"
+            ],
+            "solutions": [
+              "Remove finalizers: oc patch routemonitor console-route-monitor -n rhobs-test-routemonitor -p '{\"metadata\":{\"finalizers\":[]}}' --type=merge",
+              "Restart operator: oc delete pod -l app=route-monitor-operator -n openshift-route-monitor-operator",
+              "Force delete: oc delete routemonitor console-route-monitor -n rhobs-test-routemonitor --grace-period=0 --force"
+            ]
+          }
+        ]
+      },
+      "next_steps": {
+        "immediate": [
+          "Verify cluster is clean by listing all RouteMonitors: oc get routemonitors -A",
+          "Re-run test_create_routemonitor_cr if testing in a loop",
+          "Proceed to other test plans or test scenarios"
+        ],
+        "learning": [
+          "Study Kubernetes garbage collection and finalizers",
+          "Understand namespace deletion lifecycle",
+          "Learn about owner references and cascading deletion policies",
+          "Review best practices for test resource cleanup"
+        ],
+        "advanced": [
+          "Implement automated cleanup with test framework hooks (AfterSuite in Ginkgo)",
+          "Create cleanup script that handles stuck resources gracefully",
+          "Set up resource quotas to prevent test resource leaks from consuming cluster capacity",
+          "Implement namespace lifecycle controller for automatic test namespace cleanup"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://kubernetes.io/docs/concepts/architecture/garbage-collection/",
+          "https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/",
+          "https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/",
+          "https://kubernetes.io/docs/tasks/administer-cluster/namespaces/#stuck-namespaces"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_verify_probe_metrics": {
+      "metadata": {
+        "id": "test_verify_probe_metrics",
+        "name": "Verify Probe Metrics in Prometheus",
+        "title": "Query Prometheus for Probe Metrics",
+        "category": "read-only",
+        "difficulty": "intermediate",
+        "estimated_time": "20 minutes",
+        "hands_on_percentage": 75,
+        "system_impact": {
+          "type": "none",
+          "description": "Read-only queries against Prometheus API. No modifications to cluster state.",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "none",
+          "risk_level": "minimal"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "backup_test": null,
+          "requires_cleanup": false,
+          "cleanup_test": null,
+          "restores_state": true
+        },
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "warning_message": null,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand how blackbox-exporter generates probe metrics",
+          "Learn to query Prometheus using PromQL",
+          "Master interpretation of probe_success, probe_duration_seconds, and probe_http_status_code metrics",
+          "Understand metric labels and their role in filtering",
+          "Learn to access Prometheus via port-forward and API queries"
+        ],
+        "concepts_covered": [
+          "blackbox_exporter",
+          "prometheus_servicemonitor",
+          "synthetic_monitoring",
+          "metrics_forwarding"
+        ],
+        "skills_gained": [
+          "Writing PromQL queries for probe metrics",
+          "Using kubectl/oc port-forward for service access",
+          "Interpreting time-series metric data",
+          "Understanding Prometheus metric types (gauges, counters)",
+          "Troubleshooting missing or incorrect metrics"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Querying immediately after RouteMonitor creation",
+            "consequence": "No metrics found because Prometheus hasn't scraped yet (default 30s interval)",
+            "how_to_avoid": "Wait at least 60 seconds after ServiceMonitor creation before querying metrics"
+          },
+          {
+            "mistake": "Not escaping curly braces in PromQL queries when using shell",
+            "consequence": "Shell interprets braces as brace expansion, query fails",
+            "how_to_avoid": "Always quote PromQL queries: 'probe_success{job=\"console-route-monitor\"}'"
+          },
+          {
+            "mistake": "Assuming probe_success=1 means healthy application",
+            "consequence": "Probe succeeds but application returns 500 errors - check probe_http_status_code",
+            "how_to_avoid": "Always check both probe_success AND probe_http_status_code metrics"
+          },
+          {
+            "mistake": "Not filtering metrics by job or instance label",
+            "consequence": "Query returns all probes, making results hard to interpret",
+            "how_to_avoid": "Use label filters: probe_success{job=\"console-route-monitor\"} to scope to specific probe"
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Verify that Prometheus is successfully scraping probe metrics generated by blackbox-exporter for the RouteMonitor created in previous test. Confirm metrics show probe success, response time, and HTTP status code.",
+        "duration": "20 minutes",
+        "dependencies": [
+          "test_create_routemonitor_cr"
+        ],
+        "prerequisites": [
+          "test_create_routemonitor_cr completed successfully",
+          "RouteMonitor and ServiceMonitor exist and are healthy",
+          "Prometheus Operator running in cluster",
+          "Access to query Prometheus (port-forward or route)",
+          "promtool installed (optional but recommended)"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Wait for operator reconciliation (The control loop process where a controller compares desired state (spec with actual state and takes actions to converge them",
+            "learning_note": "Prometheus scrapes metrics at intervals defined in ServiceMonitor (typically 30s). After ServiceMonitor creation, Prometheus reloads its configuration (takes ~30s), then performs first scrape. Wait at least 90 seconds total to ensure metrics are available. This prevents false negatives from querying too early.",
+            "command": "echo 'Waiting 90 seconds for Prometheus to scrape metrics...' && sleep 90",
+            "expected_output": "Waiting 90 seconds for Prometheus to scrape metrics...\n(90 second pause)",
+            "common_errors": []
+          },
+          {
+            "step_number": 2,
+            "title": "Query probe success metrics",
+            "learning_note": "Port-forwarding creates a local tunnel to a Kubernetes service, enabling local access without exposing the service externally. The -n openshift-monitoring flag specifies the namespace. Port 9090 is Prometheus's default web UI and API port. The & runs it in background. Keep this running for subsequent query steps.",
+            "command": "oc port-forward -n openshift-monitoring svc/prometheus-k8s 9090:9090 &",
+            "expected_output": "Forwarding from 127.0.0.1:9090 -> 9090\nForwarding from [::1]:9090 -> 9090",
+            "common_errors": [
+              {
+                "error": "Unable to listen on port 9090: Listeners failed to create with the following errors: [unable to create listener: Error listen tcp4 127.0.0.1:9090: bind: address already in use]",
+                "cause": "Port 9090 already in use by another process or previous port-forward",
+                "solution": "Kill existing process: lsof -ti:9090 | xargs kill -9, or use different local port: oc port-forward -n openshift-monitoring svc/prometheus-k8s 9091:9090"
+              },
+              {
+                "error": "Error from server (NotFound): services \"prometheus-k8s\" not found",
+                "cause": "Prometheus not installed or deployed in different namespace",
+                "solution": "Find Prometheus service: oc get svc -A | grep prometheus"
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Verify Prometheus API accessible",
+            "learning_note": "The /api/v1/query endpoint is Prometheus's instant query API. It evaluates PromQL (Prometheus Query Language - a functional query language for selecting and aggregating time-series data) [learn more](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions at a single point in time. The up metric is a built-in metric showing scrape success (1 = success, 0 = failure). Testing with 'up' confirms Prometheus is responding before querying probe-specific metrics. The jq tool formats JSON for readability.",
+            "command": "curl -s 'http://localhost:9090/api/v1/query?query=up' | jq .status",
+            "expected_output": "\"success\"",
+            "common_errors": [
+              {
+                "error": "curl: (7) Failed to connect to localhost port 9090: Connection refused",
+                "cause": "Port-forward not running or not ready yet",
+                "solution": "Wait 5 seconds for port-forward to establish, then retry. Verify port-forward running: ps aux | grep port-forward"
+              },
+              {
+                "error": "jq: command not found",
+                "cause": "jq not installed",
+                "solution": "Install jq or omit | jq .status to see raw JSON output"
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Query probe metrics from Prometheus",
+            "learning_note": "probe_success is a gauge metric exported by blackbox-exporter (A Prometheus exporter that performs HTTP, TCP, DNS, and ICMP probes and exposes their results as metrics) [learn more](https://github.com/prometheus/blackbox_exporter). Value 1 means probe succeeded (target responded), 0 means failed. The job label matches the ServiceMonitor name. The instance label shows the target URL being probed. This is the primary metric for alerting on probe failures.",
+            "command": "curl -s 'http://localhost:9090/api/v1/query?query=probe_success{job=\"console-route-monitor\"}' | jq '.data.result[] | {metric: .metric, value: .value}'",
+            "expected_output": "{\n \"metric\": {\n \"job\": \"console-route-monitor\",\n \"instance\": \"https://console-openshift-console.apps.cluster.example.com\",\n ...\n },\n \"value\": [\n 1676987654,\n \"1\"\n ]\n}",
+            "common_errors": [
+              {
+                "error": "\"result\": []",
+                "cause": "No probe metrics found - ServiceMonitor not created, Prometheus not scraping, or probe failing",
+                "solution": "Verify ServiceMonitor exists: oc get servicemonitor -n openshift-route-monitor-operator. Check Prometheus targets: curl -s 'http://localhost:9090/api/v1/targets' | jq '.data.activeTargets[] | select(.labels.job==\"console-route-monitor\")'"
+              },
+              {
+                "error": "\"value\": [<timestamp>, \"0\"]",
+                "cause": "Probe failing - target unreachable, returning wrong status code, or timing out",
+                "solution": "Check probe_http_status_code metric for details. Verify target URL is accessible: curl -I <target-url>"
+              }
+            ]
+          },
+          {
+            "step_number": 5,
+            "title": "Query probe metrics from Prometheus",
+            "learning_note": "probe_http_status_code shows the HTTP response code from the probe (200, 404, 500, etc.). This differentiates between different failure modes: 404=not found, 500=server error, 0=couldn't connect. Combined with probe_success, this provides detailed probe health insight. Expected value is typically 200 (OK or 302 (redirect).",
+            "command": "curl -s 'http://localhost:9090/api/v1/query?query=probe_http_status_code{job=\"console-route-monitor\"}' | jq '.data.result[] | {metric: .metric, value: .value}'",
+            "expected_output": "{\n \"metric\": {\n \"job\": \"console-route-monitor\",\n \"instance\": \"https://console-openshift-console.apps.cluster.example.com\",\n ...\n },\n \"value\": [\n 1676987654,\n \"200\"\n ]\n}",
+            "common_errors": [
+              {
+                "error": "\"value\": [<timestamp>, \"0\"]",
+                "cause": "Probe couldn't establish connection - DNS failure, network unreachable, or SSL error",
+                "solution": "Check blackbox-exporter logs. Verify target URL resolves and is accessible from cluster"
+              },
+              {
+                "error": "\"value\": [<timestamp>, \"404\"]",
+                "cause": "Target URL returns 404 Not Found - route exists but path doesn't",
+                "solution": "Verify target URL path in RouteMonitor spec. Test URL manually: curl <target-url>"
+              },
+              {
+                "error": "\"value\": [<timestamp>, \"503\"]",
+                "cause": "Target service unavailable - pod not running, service misconfigured, or backend down",
+                "solution": "Check target service health: oc get pods -n openshift-console"
+              }
+            ]
+          },
+          {
+            "step_number": 6,
+            "title": "Query probe metrics from Prometheus",
+            "learning_note": "probe_duration_seconds measures total probe execution time in seconds, from initiating the HTTP request to receiving the complete response. This metric is critical for SLO tracking and performance monitoring. Values typically range from 0.05s (fast to 5s (slow). Values > 10s may indicate network issues or slow backends.",
+            "command": "curl -s 'http://localhost:9090/api/v1/query?query=probe_duration_seconds{job=\"console-route-monitor\"}' | jq '.data.result[] | {metric: .metric, value: .value}'",
+            "expected_output": "{\n \"metric\": {\n \"job\": \"console-route-monitor\",\n \"instance\": \"https://console-openshift-console.apps.cluster.example.com\",\n ...\n },\n \"value\": [\n 1676987654,\n \"0.234567\"\n ]\n}",
+            "common_errors": []
+          },
+          {
+            "step_number": 7,
+            "title": "Query probe metrics from Prometheus",
+            "learning_note": "Combining multiple metrics in one query provides comprehensive probe health status. This query returns probe success, HTTP status, and duration simultaneously. The regex operator =~ matches label values against patterns. This is useful for querying multiple probes or filtering by label patterns.",
+            "command": "curl -s 'http://localhost:9090/api/v1/query?query=probe_success{job=\"console-route-monitor\"}' | jq -r '.data.result[] | \"Probe: \\(.metric.instance | Success: \\(.value[1] | Job: \\(.metric.job)\"'",
+            "expected_output": "Probe: https://console-openshift-console.apps.cluster.example.com | Success: 1 | Job: console-route-monitor",
+            "common_errors": []
+          },
+          {
+            "step_number": 8,
+            "title": "Query probe success metrics",
+            "learning_note": "promtool is Prometheus's official CLI tool for query testing, rule validation, and metric debugging. The 'query instant' command executes PromQL against a Prometheus server. This provides cleaner output than curl and validates PromQL syntax. Install via: brew install prometheus (macOS or download from Prometheus releases.",
+            "command": "promtool query instant http://localhost:9090 'probe_success{job=\"console-route-monitor\"}'",
+            "expected_output": "probe_success{instance=\"https://console-openshift-console.apps.cluster.example.com\", job=\"console-route-monitor\", ...} => 1 @[1676987654]",
+            "common_errors": [
+              {
+                "error": "promtool: command not found",
+                "cause": "promtool not installed",
+                "solution": "Install Prometheus tools: brew install prometheus (macOS) or apt-get install prometheus (Linux). Alternatively, skip this step and use curl queries."
+              },
+              {
+                "error": "Error: connection refused",
+                "cause": "Port-forward not running or wrong port",
+                "solution": "Verify port-forward active: ps aux | grep port-forward. Restart if needed."
+              }
+            ]
+          },
+          {
+            "step_number": 9,
+            "title": "Check Prometheus target scrape health",
+            "learning_note": "Prometheus tracks scrape health for each target via the /api/v1/targets endpoint. The activeTargets array shows all currently scraped targets. The 'up' field indicates scrape success (up/down). The 'lastError' field shows the most recent scrape error if any. This helps diagnose why metrics might be missing or stale.",
+            "command": "curl -s 'http://localhost:9090/api/v1/targets' | jq '.data.activeTargets[] | select(.labels.job==\"console-route-monitor\" | {job: .labels.job, health: .health, lastScrape: .lastScrape}'",
+            "expected_output": "{\n \"job\": \"console-route-monitor\",\n \"health\": \"up\",\n \"lastScrape\": \"2026-02-18T10:45:30.123456Z\"\n}",
+            "common_errors": [
+              {
+                "error": "\"health\": \"down\"",
+                "cause": "Prometheus can't scrape the target - endpoint unreachable, auth failure, or wrong port",
+                "solution": "Check lastError field for details: jq '.data.activeTargets[] | select(.labels.job==\"console-route-monitor\") | .lastError'. Verify ServiceMonitor configuration."
+              },
+              {
+                "error": "Empty result (no matching targets)",
+                "cause": "ServiceMonitor not picked up by Prometheus or wrong label selector",
+                "solution": "Verify ServiceMonitor exists and has correct namespace selector. Check Prometheus ServiceMonitor RBAC permissions."
+              }
+            ]
+          },
+          {
+            "step_number": 10,
+            "title": "Query probe success metrics",
+            "learning_note": "Cleaning up background port-forward processes prevents port conflicts in future tests. The pkill command sends SIGTERM to processes matching the name pattern. The -f flag matches against full command line. Verify it stopped with: ps aux | grep port-forward.",
+            "command": "pkill -f 'port-forward.*prometheus'",
+            "expected_output": "(no output, process terminated silently)",
+            "common_errors": []
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "probe_success metric exists and equals 1",
+            "probe_http_status_code metric equals 200 (or expected status)",
+            "probe_duration_seconds metric exists and shows reasonable value (< 5s)",
+            "Prometheus targets endpoint shows console-route-monitor target as 'up'",
+            "Metrics have correct labels (job, instance, etc.)"
+          ],
+          "what_success_looks_like": "All probe metrics are present in Prometheus. probe_success shows 1 (success), probe_http_status_code shows 200 (OK), probe_duration_seconds shows reasonable response time (<1s typically). Prometheus targets API shows the console-route-monitor scrape target as healthy. This confirms end-to-end monitoring is working: RouteMonitor → ServiceMonitor → Prometheus → blackbox-exporter → metrics.",
+          "what_failure_looks_like": "Metrics missing (empty query results), probe_success=0 (failures), probe_http_status_code shows errors (404, 500, 503), or Prometheus targets show 'down' health. These indicate broken monitoring: ServiceMonitor misconfigured, Prometheus not scraping, blackbox-exporter failing, or target unreachable."
+        }
+      },
+      "troubleshooting": {
+        "common_issues": [
+          {
+            "issue": "No probe metrics found in Prometheus",
+            "symptoms": "Query returns empty result set",
+            "possible_causes": [
+              "ServiceMonitor not created or misconfigured",
+              "Prometheus not configured to discover ServiceMonitors in operator namespace",
+              "Blackbox-exporter not running",
+              "Scrape interval not elapsed yet (waited < 60s)"
+            ],
+            "diagnostic_steps": [
+              "Verify ServiceMonitor exists: oc get servicemonitor -n openshift-route-monitor-operator",
+              "Check Prometheus config for serviceMonitorSelector: oc get prometheus -n openshift-monitoring k8s -o yaml | grep -A 5 serviceMonitorSelector",
+              "List all Prometheus targets: curl -s 'http://localhost:9090/api/v1/targets' | jq '.data.activeTargets[] | .labels.job' | grep console",
+              "Check blackbox-exporter pod: oc get pods -n openshift-route-monitor-operator | grep blackbox"
+            ],
+            "solutions": [
+              "Wait 90 seconds for scrape to complete",
+              "Recreate ServiceMonitor: oc delete servicemonitor console-route-monitor -n openshift-route-monitor-operator (it will be recreated by RMO)",
+              "Verify Prometheus serviceMonitorNamespaceSelector allows openshift-route-monitor-operator namespace",
+              "Check blackbox-exporter deployment and logs for errors"
+            ]
+          },
+          {
+            "issue": "probe_success shows 0 (failure)",
+            "symptoms": "Metric exists but value is 0 instead of 1",
+            "possible_causes": [
+              "Target URL unreachable from cluster",
+              "SSL/TLS certificate validation failing",
+              "Target returning unexpected HTTP status code",
+              "Probe timeout (target too slow)",
+              "Network policy blocking probe traffic"
+            ],
+            "diagnostic_steps": [
+              "Check probe_http_status_code: should show specific HTTP status or 0 for connection failure",
+              "Test target URL from cluster: oc run curl-test --image=curlimages/curl --rm -it -- curl -I <target-url>",
+              "Check blackbox-exporter logs: oc logs -n openshift-route-monitor-operator deployment/blackbox-exporter",
+              "Review probe configuration in ServiceMonitor"
+            ],
+            "solutions": [
+              "Verify target URL is correct and accessible",
+              "Check SSL certificate validity: curl -v <target-url> 2>&1 | grep -i certificate",
+              "Increase probe timeout in RouteMonitor spec if target is slow",
+              "Review network policies in target namespace: oc get networkpolicies -n openshift-console",
+              "Verify route is healthy: oc get route console -n openshift-console"
+            ]
+          },
+          {
+            "issue": "Metrics exist but timestamps are old (stale)",
+            "symptoms": "Metrics found but lastScrape time is > 5 minutes old",
+            "possible_causes": [
+              "Prometheus stopped scraping target",
+              "ServiceMonitor updated and Prometheus config not reloaded",
+              "Blackbox-exporter pod restarted or unavailable",
+              "Prometheus resource limits causing scrape delays"
+            ],
+            "diagnostic_steps": [
+              "Check target health: curl -s 'http://localhost:9090/api/v1/targets' | jq '.data.activeTargets[] | select(.labels.job==\"console-route-monitor\")'",
+              "Check Prometheus logs: oc logs -n openshift-monitoring prometheus-k8s-0 --tail=100",
+              "Verify Prometheus pod CPU/memory usage: oc top pod -n openshift-monitoring prometheus-k8s-0"
+            ],
+            "solutions": [
+              "Restart Prometheus: oc delete pod -n openshift-monitoring prometheus-k8s-0 (it will be recreated)",
+              "Check Prometheus for scrape errors in logs",
+              "Increase Prometheus resource limits if under resource pressure",
+              "Verify ServiceMonitor scrape interval isn't too long"
+            ]
+          },
+          {
+            "issue": "Port-forward fails or disconnects frequently",
+            "symptoms": "Connection refused errors or port-forward exits unexpectedly",
+            "possible_causes": [
+              "Network instability",
+              "Prometheus pod restarted",
+              "Port already in use",
+              "Insufficient kubectl/oc timeout"
+            ],
+            "diagnostic_steps": [
+              "Check Prometheus pod status: oc get pods -n openshift-monitoring | grep prometheus",
+              "Verify port availability: lsof -i :9090",
+              "Check network connectivity to cluster"
+            ],
+            "solutions": [
+              "Use different local port: oc port-forward -n openshift-monitoring svc/prometheus-k8s 9091:9090",
+              "Run port-forward in foreground to see errors",
+              "Access Prometheus via route if available: oc get route -n openshift-monitoring",
+              "Use exec directly: oc exec -n openshift-monitoring prometheus-k8s-0 -- promtool query instant http://localhost:9090 'up'"
+            ]
+          }
+        ]
+      },
+      "next_steps": {
+        "immediate": [
+          "Proceed to test_create_probe_via_api to learn about RHOBS Synthetics API probe creation",
+          "Experiment with PromQL: query ranges (probe_success[5m]), aggregations (avg_over_time), filters",
+          "Set up basic alert rule for probe_success == 0"
+        ],
+        "learning": [
+          "Study PromQL documentation and query examples",
+          "Learn about Prometheus metric types (gauge, counter, histogram, summary)",
+          "Understand Prometheus data model (metrics, labels, time series)",
+          "Review blackbox-exporter configuration options and probe modules",
+          "Explore Grafana dashboards for visualizing probe metrics"
+        ],
+        "advanced": [
+          "Create recording rules to pre-aggregate probe metrics for performance",
+          "Set up multi-window, multi-burn-rate alerts for SLO violations",
+          "Configure Prometheus remote_write to send probe metrics to RHOBS Thanos",
+          "Build custom Grafana dashboard showing probe success rate, latency percentiles, and error breakdown",
+          "Implement probe metrics federation across multiple clusters"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://prometheus.io/docs/prometheus/latest/querying/api/",
+          "https://prometheus.io/docs/prometheus/latest/querying/basics/",
+          "https://github.com/prometheus/blackbox_exporter#metrics",
+          "https://prometheus-operator.dev/docs/operator/design/#servicemonitor",
+          "https://prometheus.io/docs/prometheus/latest/command-line/promtool/"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_create_probe_via_api": {
+      "metadata": {
+        "id": "test_create_probe_via_api",
+        "name": "Create Probe via RHOBS Synthetics API",
+        "title": "Create Probe Using RHOBS Synthetics API",
+        "category": "modifies-state",
+        "difficulty": "advanced",
+        "estimated_time": "30 minutes",
+        "hands_on_percentage": 80,
+        "system_impact": {
+          "type": "creates_resources",
+          "description": "Creates probe definition in RHOBS Synthetics API. Agent reconciles probe into cluster resources (Probe CR, blackbox-exporter config). Prometheus begins scraping new probe metrics.",
+          "affected_resources": [
+            "Probe definition in RHOBS Synthetics API",
+            "Probe CR created by rhobs-synthetics-agent",
+            "Blackbox-exporter configuration updated",
+            "Prometheus scrape targets"
+          ],
+          "reversible": true,
+          "persistence": "until_cleanup",
+          "risk_level": "low"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "backup_test": null,
+          "requires_cleanup": true,
+          "cleanup_test": "test_cleanup_api_probe",
+          "restores_state": false
+        },
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": true,
+          "warning_message": "This test creates API resources and cluster probes. Run in test/stage environments only. Ensure API credentials are for test tenant.",
+          "safe_to_retry": false,
+          "idempotent": false
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand RHOBS Synthetics API architecture and multi-tenancy model",
+          "Learn to authenticate with RHOBS API using OIDC tokens",
+          "Master probe definition schema and required fields",
+          "Understand probe lifecycle: pending → active → running",
+          "Learn how rhobs-synthetics-agent reconciles API probes into cluster resources",
+          "Understand the relationship between API probe definitions and Probe CRs"
+        ],
+        "concepts_covered": [
+          "rhobs_synthetics_api",
+          "rhobs_synthetics_agent",
+          "probe_custom_resource",
+          "blackbox_exporter",
+          "synthetic_monitoring"
+        ],
+        "skills_gained": [
+          "Making authenticated REST API requests with curl",
+          "Working with JSON payloads for probe creation",
+          "Understanding multi-tenant API design patterns",
+          "Debugging API authentication and authorization issues",
+          "Verifying agent reconciliation of API resources into Kubernetes CRs",
+          "Troubleshooting probe status transitions"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Not obtaining fresh OIDC token before API request",
+            "consequence": "401 Unauthorized error due to expired token",
+            "how_to_avoid": "Always obtain token immediately before API calls. Tokens typically expire after 5-60 minutes."
+          },
+          {
+            "mistake": "Using wrong tenant ID in API request",
+            "consequence": "403 Forbidden error or probe created in wrong tenant namespace",
+            "how_to_avoid": "Verify tenant ID with API administrator. Use dedicated test tenant for learning."
+          },
+          {
+            "mistake": "Creating probe with invalid URL (no scheme, invalid domain)",
+            "consequence": "Probe created in API but agent rejects it during URL validation",
+            "how_to_avoid": "Always include scheme (https://), validate URL format, test URL accessibility first."
+          },
+          {
+            "mistake": "Expecting probe to be active immediately after creation",
+            "consequence": "Checking too soon shows status=pending, assuming failure",
+            "how_to_avoid": "Probe lifecycle takes 30-90 seconds: pending → agent validates URL → active → agent creates CR → running."
+          },
+          {
+            "mistake": "Not checking API response for probe ID",
+            "consequence": "Cannot query or delete probe later, orphaned resources",
+            "how_to_avoid": "Always capture probe ID from API response: jq -r '.id' and store for cleanup."
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Create a probe definition via RHOBS Synthetics API, verify the rhobs-synthetics-agent reconciles it into a Probe CR, and confirm blackbox-exporter executes the probe with metrics appearing in Prometheus.",
+        "duration": "30 minutes",
+        "dependencies": [],
+        "prerequisites": [
+          "Access to RHOBS Synthetics API endpoint (stage environment)",
+          "OIDC credentials for API authentication (client ID, client secret)",
+          "Tenant ID for test tenant",
+          "rhobs-synthetics-agent deployed and healthy in cluster",
+          "Permissions to view Probe CRs and blackbox-exporter resources",
+          "curl and jq installed"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Set API endpoint and tenant ID variables",
+            "learning_note": "RHOBS Synthetics API is deployed per environment (stage, production). The API endpoint URL varies by environment. Tenant ID identifies which namespace probes belong to for multi-tenancy (The ability to serve multiple customers (tenants) from a single instance while maintaining data isolation) [learn more](https://kubernetes.io/docs/concepts/security/multi-tenancy/) isolation. Setting these as environment variables simplifies subsequent curl commands and makes the test portable across environments.",
+            "command": "export RHOBS_API_URL='https://rhobs-synthetics-api-stage.apps.cluster.example.com'\nexport TENANT_ID='test-tenant-123'\necho \"API URL: $RHOBS_API_URL\"\necho \"Tenant ID: $TENANT_ID\"",
+            "expected_output": "API URL: https://rhobs-synthetics-api-stage.apps.cluster.example.com\nTenant ID: test-tenant-123",
+            "common_errors": []
+          },
+          {
+            "step_number": 2,
+            "title": "Obtain OIDC token for API authentication",
+            "learning_note": "RHOBS Synthetics API uses OAuth 2.0 Client Credentials flow for authentication. The token endpoint exchanges client ID and client secret for a JWT access token. The token includes tenant claims for authorization. Token lifetimes vary (typically 1 hour). The jq command extracts the access_token field from JSON response.",
+            "command": "export ACCESS_TOKEN=$(curl -s -X POST 'https://sso.redhat.com/auth/realms/rhobs/protocol/openid-connect/token' \\\n -H 'Content-Type: application/x-www-form-urlencoded' \\\n -d 'grant_type=client_credentials' \\\n -d 'client_id=rhobs-test-client' \\\n -d 'client_secret=YOUR_CLIENT_SECRET' \\\n | jq -r '.access_token' echo \"Token obtained: ${ACCESS_TOKEN:0:50}...\"",
+            "expected_output": "Token obtained: eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6...",
+            "common_errors": [
+              {
+                "error": "jq returns 'null'",
+                "cause": "Authentication failed - wrong client ID, invalid client secret, or client not authorized",
+                "solution": "Check API response without jq: curl -s -X POST ... (no jq). Look for error field. Verify credentials with API administrator."
+              },
+              {
+                "error": "curl: (60) SSL certificate problem: unable to get local issuer certificate",
+                "cause": "SSL certificate verification failing for SSO endpoint",
+                "solution": "Add -k flag to curl for testing (NOT for production). Or install CA certificate bundle."
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Obtain OIDC token for API authentication",
+            "learning_note": "The /api/v1/probes endpoint lists all probes for the authenticated tenant. This verifies: API is reachable, token is valid, tenant authorization works, and API is responding. The HTTP 200 status indicates success. Empty array [] is expected if no probes exist yet. This is a safe read-only validation before creating resources.",
+            "command": "curl -s -w '\\nHTTP Status: %{http_code}\\n' -X GET \"$RHOBS_API_URL/api/v1/probes\" \\\n -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n -H \"X-Tenant-ID: $TENANT_ID\" | jq .",
+            "expected_output": "{\n \"probes\": []\n}\nHTTP Status: 200",
+            "common_errors": [
+              {
+                "error": "HTTP Status: 401",
+                "cause": "Token invalid, expired, or not included in request",
+                "solution": "Regenerate token (step 2). Verify Authorization header format: 'Bearer <token>' with space."
+              },
+              {
+                "error": "HTTP Status: 403",
+                "cause": "Token valid but tenant ID unauthorized or doesn't exist",
+                "solution": "Verify tenant ID with: echo $TENANT_ID. Contact API administrator to confirm tenant access."
+              },
+              {
+                "error": "HTTP Status: 404",
+                "cause": "Wrong API endpoint URL or API not deployed",
+                "solution": "Verify API URL: echo $RHOBS_API_URL. Check API route: oc get route -n rhobs-synthetics-api"
+              },
+              {
+                "error": "curl: (6) Could not resolve host",
+                "cause": "DNS resolution failure or wrong hostname",
+                "solution": "Verify hostname resolves: nslookup <hostname>. Check API URL for typos."
+              }
+            ]
+          },
+          {
+            "step_number": 4,
+            "title": "Create probe JSON payload",
+            "learning_note": "Probe definitions use JSON schema with required fields: url (target to probe), labels (key-value pairs for filtering/grouping), interval (how often to probe in seconds). Optional fields include timeout, expected_status_code, method (GET/POST/HEAD). The tenant field is set via X-Tenant-ID header, not in payload. Labels enable querying and filtering probes by environment, team, service, etc.",
+            "command": "cat > /tmp/probe-payload.json <<'EOF'\n{\n \"url\": \"https://console-openshift-console.apps.cluster.example.com\",\n \"labels\": {\n \"environment\": \"test\",\n \"service\": \"openshift-console\",\n \"team\": \"platform\",\n \"test_case\": \"test_create_probe_via_api\"\n },\n \"interval\": \"30s\",\n \"timeout\": \"10s\",\n \"expected_status_code\": 200,\n \"method\": \"GET\"\n}\nEOF\ncat /tmp/probe-payload.json | jq .",
+            "expected_output": "{\n \"url\": \"https://console-openshift-console.apps.cluster.example.com\",\n \"labels\": {\n \"environment\": \"test\",\n \"service\": \"openshift-console\",\n \"team\": \"platform\",\n \"test_case\": \"test_create_probe_via_api\"\n },\n \"interval\": \"30s\",\n \"timeout\": \"10s\",\n \"expected_status_code\": 200,\n \"method\": \"GET\"\n}",
+            "common_errors": [
+              {
+                "error": "jq parse error: Invalid numeric literal",
+                "cause": "JSON syntax error - missing quote, comma, or brace",
+                "solution": "Validate JSON: cat /tmp/probe-payload.json | jq . shows specific error line"
+              }
+            ]
+          },
+          {
+            "step_number": 5,
+            "title": "Obtain OIDC token for API authentication",
+            "learning_note": "POST to /api/v1/probes creates a new probe. The API validates the payload, assigns a unique probe ID (UUID), sets initial status to 'pending', and stores it in the database. The response includes the probe ID - critical for future operations (GET, DELETE, status updates). Save this ID for cleanup. The API returns HTTP 201 Created on success.",
+            "command": "PROBE_RESPONSE=$(curl -s -w '\\nHTTP_STATUS:%{http_code}' -X POST \"$RHOBS_API_URL/api/v1/probes\" \\\n -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n -H \"X-Tenant-ID: $TENANT_ID\" \\\n -H \"Content-Type: application/json\" \\\n -d @/tmp/probe-payload.json echo \"$PROBE_RESPONSE\" | grep -v HTTP_STATUS | jq .\nHTTP_STATUS=$(echo \"$PROBE_RESPONSE\" | grep HTTP_STATUS | cut -d':' -f2 echo \"HTTP Status: $HTTP_STATUS\"\nexport PROBE_ID=$(echo \"$PROBE_RESPONSE\" | grep -v HTTP_STATUS | jq -r '.id' echo \"Probe ID: $PROBE_ID\"",
+            "expected_output": "{\n \"id\": \"a7b8c9d0-1234-5678-90ab-cdef12345678\",\n \"url\": \"https://console-openshift-console.apps.cluster.example.com\",\n \"labels\": {...},\n \"status\": \"pending\",\n \"created_at\": \"2026-02-18T10:50:00Z\",\n \"updated_at\": \"2026-02-18T10:50:00Z\"\n}\nHTTP Status: 201\nProbe ID: a7b8c9d0-1234-5678-90ab-cdef12345678",
+            "common_errors": [
+              {
+                "error": "HTTP Status: 400",
+                "cause": "Invalid request body - missing required field, wrong data type, or invalid URL format",
+                "solution": "Check API response for 'error' field describing validation failure. Common: url missing scheme, interval wrong format (use '30s' not 30), labels not object."
+              },
+              {
+                "error": "HTTP Status: 409",
+                "cause": "Probe with same URL and labels already exists (duplicate)",
+                "solution": "Change labels or URL to make probe unique, or delete existing probe first"
+              },
+              {
+                "error": "HTTP Status: 500",
+                "cause": "API server error - database unavailable, internal error",
+                "solution": "Check API logs: oc logs -n rhobs-synthetics-api deployment/api --tail=50. Retry after a minute."
+              }
+            ]
+          },
+          {
+            "step_number": 6,
+            "title": "Obtain OIDC token for API authentication",
+            "learning_note": "GET /api/v1/probes/{id} retrieves a single probe by ID. This confirms the probe was stored correctly. Check that status is 'pending' - the agent hasn't processed it yet. The created_at and updated_at timestamps should be recent (within last minute). This is the API's view of the probe; the agent's reconciliation happens asynchronously.",
+            "command": "curl -s -X GET \"$RHOBS_API_URL/api/v1/probes/$PROBE_ID\" \\\n -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n -H \"X-Tenant-ID: $TENANT_ID\" | jq .",
+            "expected_output": "{\n \"id\": \"a7b8c9d0-1234-5678-90ab-cdef12345678\",\n \"url\": \"https://console-openshift-console.apps.cluster.example.com\",\n \"labels\": {...},\n \"status\": \"pending\",\n \"tenant_id\": \"test-tenant-123\",\n ...\n}",
+            "common_errors": [
+              {
+                "error": "HTTP Status: 404",
+                "cause": "Probe ID not found - wrong tenant, probe deleted, or ID typo",
+                "solution": "Verify PROBE_ID: echo $PROBE_ID. List all probes: curl -s -X GET \"$RHOBS_API_URL/api/v1/probes\" ... | jq ."
+              }
+            ]
+          },
+          {
+            "step_number": 7,
+            "title": "Wait for operator reconciliation",
+            "learning_note": "The rhobs-synthetics-agent polls the API every 30-60 seconds for new/updated probes. When it discovers a probe with status=pending, it validates the URL via HTTP HEAD request. If valid, it updates status to 'active', creates a Probe CR in Kubernetes, and configures blackbox-exporter. The entire flow takes 1-2 minutes. Watch for status change from 'pending' to 'active' to 'running'.",
+            "command": "echo 'Waiting 90 seconds for agent reconciliation...'\nfor i in {1..18}; do\n sleep 5\n STATUS=$(curl -s -X GET \"$RHOBS_API_URL/api/v1/probes/$PROBE_ID\" -H \"Authorization: Bearer $ACCESS_TOKEN\" -H \"X-Tenant-ID: $TENANT_ID\" | jq -r '.status' echo \"Attempt $i: Status = $STATUS\"\n if [ \"$STATUS\" = \"running\" ]; then\n echo \"Probe is running!\"\n break\n fi\ndone",
+            "expected_output": "Waiting 90 seconds for agent reconciliation...\nAttempt 1: Status = pending\nAttempt 2: Status = pending\nAttempt 3: Status = active\nAttempt 4: Status = active\nAttempt 5: Status = running\nProbe is running!",
+            "common_errors": [
+              {
+                "error": "Status stuck at 'pending' after 2+ minutes",
+                "cause": "Agent not running, agent not configured to poll this API, or agent reconciliation failing",
+                "solution": "Check agent pod: oc get pods -n rhobs-synthetics-agent. Check agent logs: oc logs -n rhobs-synthetics-agent deployment/agent --tail=100 | grep <probe-id>"
+              },
+              {
+                "error": "Status changes to 'failed' or 'rejected'",
+                "cause": "URL validation failed - URL unreachable, returns error, or invalid format",
+                "solution": "Check probe details for error message: curl ... /api/v1/probes/$PROBE_ID | jq .error. Test URL manually: curl -I <url>"
+              }
+            ]
+          },
+          {
+            "step_number": 8,
+            "title": "Verify Probe CR created in cluster",
+            "learning_note": "The rhobs-synthetics-agent creates Probe Custom Resources in Kubernetes based on API probe definitions. The Probe CR name typically includes the probe ID or a hash. The spec contains target URL, interval, timeout. Labels from API probe are propagated. Finding this CR confirms agent successfully reconciled the API probe into cluster resources.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "oc get probes -A | grep -i console",
+            "expected_output": "NAMESPACE NAME AGE\nrhobs-synthetics-agent probe-a7b8c9d0 2m",
+            "common_errors": [
+              {
+                "error": "No resources found or grep returns no matches",
+                "cause": "Agent hasn't created Probe CR yet, or created with different name",
+                "solution": "List all Probes: oc get probes -A. Check agent logs for creation events. Wait longer (agent may be slow)."
+              },
+              {
+                "error": "error: the server doesn't have a resource type \"probes\"",
+                "cause": "Probe CRD not installed - agent deployment incomplete",
+                "solution": "Install Probe CRD: oc get crd | grep probe. Reinstall agent if CRD missing."
+              }
+            ]
+          },
+          {
+            "step_number": 9,
+            "title": "Inspect Probe CR details",
+            "learning_note": "The Probe CR spec defines the blackbox-exporter check configuration. Key fields: target (URL), module (http_2xx, tcp_connect, etc.), interval, timeout. The status subresource shows probe execution health and last probe time. Labels include metadata from the API probe definition. Owner references link back to controlling resources if applicable.\n\n**Production context:** In production environments, this check would be automated in CI/CD pipelines and monitored via alerts. If this resource is missing or unhealthy, downstream functionality silently breaks, making proactive monitoring essential.",
+            "command": "PROBE_CR_NAME=$(oc get probes -A -o json | jq -r '.items[] | select(.spec.target | contains(\"console-openshift-console\" | .metadata.name' | head -n1 oc get probe \"$PROBE_CR_NAME\" -n rhobs-synthetics-agent -o yaml",
+            "expected_output": "apiVersion: monitoring.rhobs/v1alpha1\nkind: Probe\nmetadata:\n name: probe-a7b8c9d0\n namespace: rhobs-synthetics-agent\n labels:\n environment: test\n service: openshift-console\n ...\nspec:\n target: https://console-openshift-console.apps.cluster.example.com\n interval: 30s\n timeout: 10s\n module: http_2xx\n...",
+            "common_errors": []
+          },
+          {
+            "step_number": 10,
+            "title": "Wait for operator reconciliation",
+            "learning_note": "After Probe CR is created, blackbox-exporter begins executing probes and exposing metrics. Prometheus scrapes these metrics based on configuration. Query probe_success to verify end-to-end flow: API → agent → Probe CR → blackbox-exporter → metrics → Prometheus. Metrics may take 1-2 minutes to appear after Probe CR creation due to scrape intervals.",
+            "command": "oc port-forward -n openshift-monitoring svc/prometheus-k8s 9090:9090 &\nsleep 5\ncurl -s 'http://localhost:9090/api/v1/query?query=probe_success{job=~\".*console.*\"}' | jq '.data.result[] | {metric: .metric.job, instance: .metric.instance, value: .value[1]}'\npkill -f 'port-forward.*prometheus'",
+            "expected_output": "{\n \"metric\": \"blackbox-exporter\",\n \"instance\": \"https://console-openshift-console.apps.cluster.example.com\",\n \"value\": \"1\"\n}",
+            "common_errors": [
+              {
+                "error": "Empty result set",
+                "cause": "Prometheus not scraping yet, metrics not exposed, or probe failing",
+                "solution": "Wait 60 seconds for scrape. Check Prometheus targets. Verify Probe CR status. Check blackbox-exporter logs."
+              }
+            ]
+          },
+          {
+            "step_number": 11,
+            "title": "Obtain OIDC token for API authentication",
+            "learning_note": "Once the probe is executing successfully and metrics are flowing, the agent updates the probe status in the API to 'running'. This confirms the complete lifecycle: pending (created → active (validated → running (executing). The updated_at timestamp shows when the agent last modified the probe. This status update confirms bidirectional communication: API → agent (create and agent → API (status update).",
+            "command": "curl -s -X GET \"$RHOBS_API_URL/api/v1/probes/$PROBE_ID\" \\\n -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n -H \"X-Tenant-ID: $TENANT_ID\" | jq '{id: .id, url: .url, status: .status, updated_at: .updated_at}'",
+            "expected_output": "{\n \"id\": \"a7b8c9d0-1234-5678-90ab-cdef12345678\",\n \"url\": \"https://console-openshift-console.apps.cluster.example.com\",\n \"status\": \"running\",\n \"updated_at\": \"2026-02-18T10:52:30Z\"\n}",
+            "common_errors": [
+              {
+                "error": "status still 'active' after 5+ minutes",
+                "cause": "Agent not updating status back to API, or probe execution failing",
+                "solution": "Check agent logs for status update errors. Verify agent has API write permissions. Check probe execution in blackbox-exporter."
+              }
+            ]
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Probe created in API with HTTP 201, probe ID returned",
+            "Probe status transitions: pending → active → running",
+            "Probe CR created in cluster by agent",
+            "Probe CR spec matches API probe definition (URL, labels, interval)",
+            "probe_success metric appears in Prometheus with value 1",
+            "API probe updated_at timestamp reflects agent reconciliation"
+          ],
+          "what_success_looks_like": "The probe definition is created in the RHOBS Synthetics API with status=pending. The rhobs-synthetics-agent discovers it, validates the URL, creates a Probe CR in Kubernetes, and updates API status to active then running. Blackbox-exporter executes the probe, exports metrics. Prometheus scrapes metrics showing probe_success=1. This demonstrates complete end-to-end integration: API → agent → Kubernetes → blackbox-exporter → Prometheus.",
+          "what_failure_looks_like": "API returns errors (400, 403, 500), probe stuck in pending status, no Probe CR created, agent logs show reconciliation errors, probe status becomes 'failed', no metrics in Prometheus, or probe_success=0. These indicate broken integration points: authentication failure, agent misconfiguration, URL validation failure, or probe execution errors."
+        }
+      },
+      "troubleshooting": {
+        "common_issues": [
+          {
+            "issue": "API authentication fails (401 Unauthorized)",
+            "symptoms": "All API requests return HTTP 401",
+            "possible_causes": [
+              "Token expired (lifetime exceeded)",
+              "Token malformed or truncated during export",
+              "Wrong Authorization header format",
+              "Token issuer mismatch (wrong SSO realm)"
+            ],
+            "diagnostic_steps": [
+              "Check token content: echo $ACCESS_TOKEN | cut -d'.' -f2 | base64 -d | jq . (shows JWT claims)",
+              "Verify token not null: echo $ACCESS_TOKEN (should show long string, not empty)",
+              "Test authentication: curl -v ... (check Authorization header in request)"
+            ],
+            "solutions": [
+              "Regenerate token (step 2)",
+              "Verify Authorization header: 'Bearer <token>' with space between Bearer and token",
+              "Check token expiration: decode JWT and check 'exp' claim",
+              "Ensure client credentials are correct and client is active in SSO"
+            ]
+          },
+          {
+            "issue": "Probe stuck in 'pending' status indefinitely",
+            "symptoms": "Probe created but status never changes from pending after 5+ minutes",
+            "possible_causes": [
+              "rhobs-synthetics-agent not running",
+              "Agent not configured to poll this API endpoint",
+              "Agent reconciliation failing (permission errors, crashes)",
+              "Agent polling interval very long (> 5 minutes)"
+            ],
+            "diagnostic_steps": [
+              "Check agent pod: oc get pods -n rhobs-synthetics-agent",
+              "Check agent logs: oc logs -n rhobs-synthetics-agent deployment/agent --tail=200",
+              "Verify agent API configuration: oc get deployment agent -n rhobs-synthetics-agent -o yaml | grep -i api",
+              "Check agent RBAC: oc get clusterrole,clusterrolebinding | grep synthetics-agent"
+            ],
+            "solutions": [
+              "Restart agent pod: oc delete pod -l app=rhobs-synthetics-agent -n rhobs-synthetics-agent",
+              "Verify agent API_ENDPOINT environment variable matches $RHOBS_API_URL",
+              "Check agent has permissions to create Probe CRs and update API probe status",
+              "Reduce agent polling interval if too long"
+            ]
+          },
+          {
+            "issue": "Probe status changes to 'failed' or 'rejected'",
+            "symptoms": "Status moves from pending to failed instead of active",
+            "possible_causes": [
+              "URL validation failed (agent HTTP HEAD request got error)",
+              "URL format invalid (missing scheme, invalid characters)",
+              "URL unreachable from agent pod network",
+              "SSL certificate validation failing"
+            ],
+            "diagnostic_steps": [
+              "Get error details: curl -s \"$RHOBS_API_URL/api/v1/probes/$PROBE_ID\" ... | jq .error",
+              "Test URL from cluster: oc run curl-test --image=curlimages/curl --rm -it -- curl -I <url>",
+              "Check agent logs for validation errors: oc logs -n rhobs-synthetics-agent deployment/agent | grep <probe-id>",
+              "Verify URL format: must include scheme (https://) and valid domain"
+            ],
+            "solutions": [
+              "Fix URL format in probe payload (add https://, remove invalid chars)",
+              "Verify URL is accessible from cluster network",
+              "Check DNS resolution: oc run dns-test --image=busybox --rm -it -- nslookup <hostname>",
+              "Disable SSL verification in probe config if using self-signed certs (test only)"
+            ]
+          },
+          {
+            "issue": "Probe CR not created despite status=active",
+            "symptoms": "API shows active but no Probe CR in cluster",
+            "possible_causes": [
+              "Agent lacks permissions to create Probe CRs",
+              "Probe CRD not installed",
+              "Agent namespace incorrect or doesn't exist",
+              "Agent reconciliation logic bug"
+            ],
+            "diagnostic_steps": [
+              "List all Probes: oc get probes -A",
+              "Check Probe CRD exists: oc get crd | grep probe",
+              "Check agent ClusterRole: oc describe clusterrole rhobs-synthetics-agent",
+              "Check agent logs for creation events: oc logs -n rhobs-synthetics-agent deployment/agent | grep -i 'create.*probe'"
+            ],
+            "solutions": [
+              "Verify Probe CRD installed: oc get crd probes.monitoring.rhobs",
+              "Check agent ServiceAccount has create permission on probes: oc auth can-i create probes --as=system:serviceaccount:rhobs-synthetics-agent:agent",
+              "Ensure target namespace exists: oc get namespace rhobs-synthetics-agent",
+              "Review agent source code or contact maintainer if bug suspected"
+            ]
+          },
+          {
+            "issue": "Metrics not appearing in Prometheus",
+            "symptoms": "Probe CR exists, status=running, but no probe_success metrics",
+            "possible_causes": [
+              "Blackbox-exporter not scraping Probe CR",
+              "Prometheus not scraping blackbox-exporter",
+              "ServiceMonitor or PodMonitor not configured correctly",
+              "Probe execution failing (returns 0 metrics)"
+            ],
+            "diagnostic_steps": [
+              "Check blackbox-exporter logs: oc logs -n rhobs-synthetics-agent deployment/blackbox-exporter",
+              "List Prometheus targets: curl 'http://localhost:9090/api/v1/targets' | jq '.data.activeTargets[] | select(.labels.job | contains(\"blackbox\"))'",
+              "Check ServiceMonitor: oc get servicemonitor -A | grep blackbox",
+              "Query Prometheus for any blackbox metrics: curl 'http://localhost:9090/api/v1/query?query=up{job=~\".*blackbox.*\"}'"
+            ],
+            "solutions": [
+              "Verify blackbox-exporter pod running: oc get pods -n rhobs-synthetics-agent | grep blackbox",
+              "Check Prometheus scrape config includes blackbox-exporter",
+              "Restart blackbox-exporter: oc delete pod -l app=blackbox-exporter -n rhobs-synthetics-agent",
+              "Wait 2-3 minutes for Prometheus scrape cycle"
+            ]
+          }
+        ]
+      },
+      "next_steps": {
+        "immediate": [
+          "Clean up test probe: DELETE request to API endpoint /api/v1/probes/$PROBE_ID",
+          "Experiment with different probe configurations: intervals, timeouts, HTTP methods",
+          "Create multiple probes and observe agent reconciliation behavior"
+        ],
+        "learning": [
+          "Study RHOBS Synthetics API OpenAPI/Swagger documentation",
+          "Understand OAuth 2.0 client credentials flow and JWT token structure",
+          "Learn about Kubernetes admission webhooks for probe validation",
+          "Review rhobs-synthetics-agent source code to understand reconciliation logic",
+          "Explore probe lifecycle state machine and status transitions"
+        ],
+        "advanced": [
+          "Implement automated probe creation via CI/CD pipeline",
+          "Build probe management UI on top of RHOBS Synthetics API",
+          "Set up probe status monitoring and alerting on status=failed",
+          "Implement probe deduplication logic for multi-region deployments",
+          "Create custom probe modules in blackbox-exporter for specialized checks",
+          "Build multi-tenant probe dashboard showing probe health by tenant"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://github.com/rhobs/api",
+          "https://github.com/rhobs/rhobs-synthetics-agent",
+          "https://oauth.net/2/grant-types/client-credentials/",
+          "https://restfulapi.net/",
+          "https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/",
+          "https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    }
+  },
+  "progress_tracking": {
+    "description": "Track your progress through the RHOBS Next test plan",
+    "local_storage_key": "rhobs_next_testplan_progress",
+    "tracked_items": [
+      "test_verify_route_monitor_deployment",
+      "test_create_routemonitor_cr",
+      "test_cleanup_routemonitor_cr",
+      "test_verify_probe_metrics",
+      "test_create_probe_via_api"
+    ]
+  }
+}

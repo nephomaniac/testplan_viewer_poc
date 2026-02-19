@@ -1,8 +1,8 @@
-# Implementation Summary: RHOBS Test Plan Viewer
+# Implementation Summary: Test Plan Viewer
 
 ## What We Built
 
-A complete Go-based toolchain for generating **interactive, educational HTML** from RHOBS test plan JSON, optimized for **onboarding and training new developers**.
+A complete Go-based toolchain for generating **interactive, educational HTML** from test plan JSON, optimized for **onboarding and training new developers**.
 
 ## 📦 Deliverables
 
@@ -55,7 +55,7 @@ A complete Go-based toolchain for generating **interactive, educational HTML** f
 ## 🏗️ Architecture
 
 ```
-Input: rhobs_test_plan_v2.json (Learning-optimized structure)
+Input: test plan JSON (Learning-optimized structure)
   ↓
 Go Binary: testplan-viewer
   ├── Parses JSON into Go structs
@@ -271,7 +271,7 @@ Output: testplan.html (Self-contained, interactive)
 If you wanted to measure effectiveness:
 
 1. **Time to Competency**
-   - How long until new dev can debug RHOBS issues independently?
+   - How long until new dev can work with the system independently?
    - Baseline vs. with this tool
 
 2. **Error Reduction**
@@ -314,19 +314,20 @@ Based on feedback from Trevor's conversation:
 ## 📝 Files Created
 
 ```
-testcase_poc/
-├── go.mod                           # Go module definition
-├── main.go                          # CLI entrypoint (Cobra)
-├── models/
-│   └── testplan.go                 # Go structs (400+ lines)
-├── generator/
-│   ├── html.go                     # HTML generator
-│   └── templates/
-│       └── testplan.html           # Alpine.js template (2500+ lines)
-├── rhobs_test_plan_v2.json        # Learning-optimized test plan (1100+ lines)
-├── testplan.html                   # Generated output (176KB, 2518 lines)
-├── README.md                       # User documentation
-└── IMPLEMENTATION_SUMMARY.md       # This file
+testplan_tools_poc/
+├── cmd/testplan-viewer/             # CLI entrypoint (Cobra)
+├── internal/
+│   ├── models/                     # Go structs
+│   ├── parser/                     # JSON parsing and validation
+│   └── generator/                  # HTML generation
+│       └── templates/
+│           └── testplan.html       # Alpine.js template (2500+ lines)
+├── examples/                        # Example test plans
+│   └── camo/                       # CAMO operator example
+│       └── camo-testplan.json      # Learning-optimized test plan
+├── testplan.html                    # Generated output
+└── docs/                            # Documentation
+    └── ...
 ```
 
 **Total Lines of Code:**
@@ -401,7 +402,7 @@ testcase_poc/
 
 ## 🏆 Success Criteria (Met)
 
-✅ **Primary Goal:** Create tooling that helps new developers learn RHOBS by testing it
+✅ **Primary Goal:** Create tooling that helps new developers learn systems by testing them
 - **Achieved:** JSON structure prioritizes learning, HTML guides step-by-step
 
 ✅ **Secondary Goal:** JSON should adapt to consumer needs

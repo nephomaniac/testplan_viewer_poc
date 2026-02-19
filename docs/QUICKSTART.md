@@ -114,7 +114,7 @@ Reopen next day → Pick up where you left off
 
 ### Change Test Plan Content
 
-Edit `rhobs_test_plan_v2.json`:
+Edit your test plan JSON file (e.g., `examples/camo/camo-testplan.json`):
 
 ```json
 {
@@ -166,10 +166,9 @@ Then regenerate:
 - **Not tracking progress** → Check boxes to stay motivated
 
 ### 🎯 Success Signals
-- ✅ You can create HCP clusters confidently
-- ✅ You understand the observability data flows
-- ✅ You can query Loki and RHOBS
-- ✅ You can debug synthetic monitoring issues
+- ✅ You can execute tests confidently
+- ✅ You understand the system under test
+- ✅ You can troubleshoot common issues
 - ✅ You know where to get help
 
 ## Troubleshooting
@@ -196,37 +195,35 @@ google-chrome testplan.html
 ### Lost Progress?
 ```bash
 # Check localStorage in browser console
-localStorage.getItem('rhobs_testplan_progress')
+localStorage.getItem('testplan_progress')
 
 # Reset if corrupted
-localStorage.removeItem('rhobs_testplan_progress')
+localStorage.removeItem('testplan_progress')
 ```
 
 ## Next Steps After Completion
 
 ### 🎓 You've Learned
-- ROSA HCP cluster lifecycle
-- Observability data flows (metrics, logs, probes)
-- LogQL and PromQL basics
-- Multi-cluster debugging
-- RHOBS architecture
+- System architecture and components
+- Testing patterns and workflows
+- Troubleshooting techniques
+- Best practices
 
 ### 🚀 What's Next
-1. **Shadow experienced SRE** - Watch them debug real issues
-2. **Take on-call shift** - With mentorship
-3. **Explore advanced topics** - Custom metrics, alerting rules
-4. **Contribute back** - Add your learnings to test plan
+1. **Apply to real scenarios** - Use knowledge in production
+2. **Explore advanced topics** - Dive deeper into complex areas
+3. **Contribute back** - Add your learnings to test plan
+4. **Create new test plans** - Document other systems
 
 ### 📚 Further Reading
-- RHOBS Architecture Docs
-- Route Monitor Operator Code
-- OpenShift Logging Documentation
-- Synthetic Monitoring Design Proposal
+- See project-specific documentation
+- Explore operator/system source code
+- Review related test plans in examples/
 
 ---
 
-**Time Investment:** 2-3 hours hands-on + breaks
-**Outcome:** Full understanding of RHOBS observability stack
-**Next:** Apply knowledge to real production issues
+**Time Investment:** Varies by test plan
+**Outcome:** Understanding of system under test
+**Next:** Apply knowledge to real scenarios
 
 🎉 **Happy Learning!**
