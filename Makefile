@@ -28,10 +28,11 @@ clean:
 	rm -f testplan.html
 	@echo "✅ Clean complete"
 
-## run: Build and run with default example
+## run: Build and run (requires -i flag)
 run: build
-	@echo "🚀 Running with example..."
-	./$(BUILD_DIR)/$(BINARY_NAME) -i examples/camo/camo-testplan.json -o testplan.html
+	@echo "🚀 Running testplan-viewer..."
+	@echo "Usage: ./$(BUILD_DIR)/$(BINARY_NAME) -i <input.json> -o <output.html>"
+	@echo "Example: ./$(BUILD_DIR)/$(BINARY_NAME) -i examples/camo/camo-testplan.json -o testplan.html"
 
 ## install: Install binary to $GOPATH/bin
 install:
