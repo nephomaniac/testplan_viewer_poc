@@ -164,25 +164,3 @@ type ProgressTracking struct {
 	LocalStorageKey string   `json:"local_storage_key"`
 	TrackedItems    []string `json:"tracked_items"`
 }
-
-// GetTestCasesByDifficulty returns test cases filtered by difficulty
-func (tp *TestPlan) GetTestCasesByDifficulty(difficulty string) []TestCase {
-	var tests []TestCase
-	for _, test := range tp.TestCases {
-		if test.Metadata.Difficulty == difficulty {
-			tests = append(tests, test)
-		}
-	}
-	return tests
-}
-
-// GetTestCaseInSequence returns test cases in learning path order
-func (tp *TestPlan) GetTestCasesInSequence() []TestCase {
-	var tests []TestCase
-	for _, testID := range tp.LearningPath.Sequence {
-		if test, ok := tp.TestCases[testID]; ok {
-			tests = append(tests, test)
-		}
-	}
-	return tests
-}

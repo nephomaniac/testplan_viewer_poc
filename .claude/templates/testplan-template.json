@@ -1,0 +1,323 @@
+{
+  "metadata": {
+    "document_title": "Test Plan: [Service/Component Name]",
+    "version": "1.0",
+    "last_updated": "YYYY-MM-DD",
+    "status": "draft",
+    "epic": "JIRA-EPIC-KEY",
+    "purpose": "Educational test plan for [service] targeting [audience]. Explain the goal and value of this test plan.",
+    "target_audience": "New engineers onboarding to [service/team]",
+    "estimated_total_time": "X-Y hours",
+    "learning_objectives": [
+      "Understand core concepts of [service]",
+      "Learn how to [skill]",
+      "Gain proficiency in [area]"
+    ],
+    "documentation_sources": [
+      {
+        "name": "Official Documentation",
+        "url": "https://docs.example.com/",
+        "last_checked": "YYYY-MM-DD"
+      }
+    ]
+  },
+  "learning_path": {
+    "description": "Recommended sequence for new developers to learn the system",
+    "sequence": [
+      "test_1",
+      "test_2",
+      "test_3"
+    ],
+    "alternative_paths": {
+      "experienced_with_k8s": [
+        "test_2",
+        "test_3",
+        "test_1"
+      ],
+      "debugging_focus": [
+        "test_1",
+        "test_3",
+        "test_2"
+      ]
+    }
+  },
+  "prerequisites": {
+    "required_knowledge": [
+      {
+        "topic": "Kubernetes basics",
+        "level": "beginner",
+        "resources": [
+          "https://kubernetes.io/docs/tutorials/kubernetes-basics/"
+        ],
+        "why_needed": "Tests assume familiarity with pods, services, and deployments"
+      },
+      {
+        "topic": "Linux command line",
+        "level": "beginner",
+        "resources": [
+          "https://www.linux.org/pages/download/"
+        ],
+        "why_needed": "Commands are executed via terminal"
+      }
+    ],
+    "required_access": [
+      {
+        "name": "OpenShift cluster access",
+        "purpose": "Deploy and test components",
+        "how_to_get": "Request via Jira ticket to team-infra",
+        "verification": "oc whoami"
+      },
+      {
+        "name": "AWS credentials",
+        "purpose": "Manage cloud resources",
+        "how_to_get": "Follow AWS account setup guide",
+        "verification": "aws sts get-caller-identity"
+      }
+    ],
+    "environment_setup": {
+      "variables": {
+        "KUBECONFIG": "~/.kube/config",
+        "CLUSTER_NAME": "test-cluster",
+        "AWS_REGION": "us-east-1"
+      },
+      "tools": [
+        {
+          "name": "oc",
+          "install": "brew install openshift-cli",
+          "verify": "oc version"
+        },
+        {
+          "name": "aws",
+          "install": "brew install awscli",
+          "verify": "aws --version"
+        }
+      ]
+    }
+  },
+  "concepts": {
+    "concept_1": {
+      "title": "Kubernetes Pod",
+      "description": "A Pod is the smallest deployable unit in Kubernetes. It represents a single instance of a running process in your cluster and can contain one or more containers that share storage and network resources.",
+      "why_it_matters": "Understanding Pods is fundamental to working with Kubernetes. All applications run in Pods, and knowing how they work is essential for deployment, debugging, and scaling.",
+      "diagram_url": "https://kubernetes.io/images/docs/pod.svg",
+      "related_tests": [
+        "test_1",
+        "test_2"
+      ],
+      "learn_more": [
+        "https://kubernetes.io/docs/concepts/workloads/pods/",
+        "https://www.youtube.com/watch?v=5cNrTU6o3Fw"
+      ]
+    },
+    "concept_2": {
+      "title": "ServiceMonitor",
+      "description": "A ServiceMonitor is a custom resource that declaratively specifies how Prometheus should monitor Kubernetes services. It uses label selectors to find services and defines scrape configuration.",
+      "why_it_matters": "ServiceMonitors enable GitOps-friendly monitoring configuration. Instead of manually editing Prometheus config, you create ServiceMonitor resources that automatically configure metric collection.",
+      "diagram_url": null,
+      "diagram_description": "ServiceMonitor (CRD) → Prometheus Operator (watches) → Prometheus Server (scrapes) → Application Pods (metrics)",
+      "related_tests": [
+        "test_3"
+      ],
+      "learn_more": [
+        "https://prometheus-operator.dev/docs/operator/design/#servicemonitor"
+      ]
+    }
+  },
+  "testcases": {
+    "test_1": {
+      "metadata": {
+        "id": "test_1",
+        "name": "test_basic_setup",
+        "title": "Setup and Verify Basic Environment",
+        "category": "setup",
+        "difficulty": "beginner",
+        "estimated_time": "30 minutes",
+        "hands_on_percentage": 70,
+        "source_test": "path/to/test_file.go:line_number"
+      },
+      "learning": {
+        "objectives": [
+          "Understand basic setup requirements",
+          "Learn to verify environment readiness",
+          "Gain confidence with CLI tools"
+        ],
+        "concepts_covered": [
+          "concept_1"
+        ],
+        "skills_gained": [
+          "CLI tool usage",
+          "Environment validation",
+          "Troubleshooting authentication"
+        ],
+        "common_beginner_mistakes": [
+          {
+            "mistake": "Forgetting to set KUBECONFIG environment variable",
+            "consequence": "oc commands fail with 'unable to connect to cluster'",
+            "how_to_avoid": "Always verify KUBECONFIG is set before running oc commands: echo $KUBECONFIG"
+          }
+        ]
+      },
+      "test_execution": {
+        "objective": "Verify that the test environment is properly configured and all prerequisites are met",
+        "duration": "30 minutes",
+        "dependencies": [],
+        "prerequisites": [
+          "KUBECONFIG set",
+          "oc CLI installed"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Verify cluster authentication",
+            "learning_note": "Authentication is the first step in any cluster operation",
+            "command": "oc whoami",
+            "expected_output": "system:admin",
+            "why_this_step": "Ensures you have proper credentials to interact with the cluster. Without authentication, all subsequent commands will fail.",
+            "documentation_reference": "https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html",
+            "common_errors": [
+              {
+                "error": "error: You must be logged in to the server (Unauthorized)",
+                "solution": "Run: oc login https://api.cluster.example.com:6443",
+                "learn_more": "https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html#cli-logging-in_cli-developer-commands"
+              }
+            ]
+          },
+          {
+            "step_number": 2,
+            "title": "Check cluster version",
+            "learning_note": "Different OpenShift versions have different features and APIs",
+            "command": "oc version",
+            "expected_output": "Server Version: 4.15.1",
+            "why_this_step": "Knowing the cluster version helps you understand which features are available and which documentation to reference",
+            "common_errors": []
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "oc whoami returns authenticated username",
+            "oc version shows cluster version 4.x",
+            "No error messages in any command output"
+          ],
+          "how_to_verify": "Run: oc whoami && oc version",
+          "what_success_means": "Your local environment is properly configured and authenticated to the cluster",
+          "what_failure_means": "There's an issue with credentials, network connectivity, or cluster availability"
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [
+          {
+            "symptom": "oc commands timeout or hang",
+            "cause": "Network connectivity issue or cluster is down",
+            "debug_steps": [
+              "Check network: ping api.cluster.example.com",
+              "Verify cluster status in web console",
+              "Check VPN connection if required",
+              "Review firewall rules"
+            ],
+            "fix": "Restore network connectivity or wait for cluster to be available",
+            "prevention": "Verify cluster status before starting tests",
+            "documentation": "https://docs.openshift.com/container-platform/latest/support/troubleshooting/troubleshooting-network-issues.html"
+          }
+        ],
+        "getting_help": [
+          "Check OpenShift documentation: https://docs.openshift.com/",
+          "Post in #forum-openshift Slack channel",
+          "Open Red Hat support case: https://access.redhat.com/"
+        ]
+      },
+      "next_steps": {
+        "on_success": "Proceed to test_2: Deploy Application",
+        "bonus_exploration": [
+          "Explore OpenShift web console",
+          "List all namespaces: oc get namespaces",
+          "View cluster operators: oc get co"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html"
+        ],
+        "related_code": [
+          "https://github.com/openshift/oc/blob/master/pkg/cli/whoami/whoami.go"
+        ],
+        "sops": [
+          "https://docs.example.com/sop/cluster-access"
+        ]
+      }
+    },
+    "test_2": {
+      "metadata": {
+        "id": "test_2",
+        "name": "test_deploy_application",
+        "title": "Deploy Sample Application",
+        "category": "deployment",
+        "difficulty": "intermediate",
+        "estimated_time": "45 minutes",
+        "hands_on_percentage": 85
+      },
+      "learning": {
+        "objectives": [
+          "Learn Kubernetes deployment process",
+          "Understand pod lifecycle",
+          "Practice troubleshooting deployments"
+        ],
+        "concepts_covered": [
+          "concept_1"
+        ],
+        "skills_gained": [
+          "Deploying applications to Kubernetes",
+          "Monitoring pod status",
+          "Reading pod logs"
+        ],
+        "common_beginner_mistakes": []
+      },
+      "test_execution": {
+        "objective": "Deploy a sample application and verify it runs successfully",
+        "duration": "45 minutes",
+        "dependencies": [
+          "test_1"
+        ],
+        "prerequisites": [
+          "Cluster access verified"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Create namespace",
+            "command": "oc create namespace test-app",
+            "expected_output": "namespace/test-app created"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Application pod is running",
+            "Application is accessible"
+          ]
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [],
+        "getting_help": []
+      },
+      "next_steps": {
+        "on_success": "Proceed to test_3",
+        "bonus_exploration": []
+      },
+      "references": {
+        "documentation": [],
+        "related_code": [],
+        "sops": []
+      }
+    }
+  },
+  "progress_tracking": {
+    "description": "Track your progress through the test plan in your browser using localStorage",
+    "local_storage_key": "testplan_progress_service_name",
+    "tracked_items": [
+      "completed_tests",
+      "completed_steps",
+      "notes",
+      "last_accessed"
+    ]
+  }
+}

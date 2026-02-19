@@ -7,6 +7,12 @@
 testplan-viewer
 testplan-viewer.exe
 
+# Build and dist directories (keep structure via .gitkeep)
+build/*
+!build/.gitkeep
+dist/*
+!dist/.gitkeep
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -21,7 +27,10 @@ vendor/
 
 # Generated files
 testplan.html
+
+# Exclude generated HTML, but keep template
 *.html
+!internal/generator/templates/*.html
 
 # macOS
 .DS_Store

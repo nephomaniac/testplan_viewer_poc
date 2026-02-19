@@ -4,17 +4,22 @@ import (
 	"embed"
 	"encoding/json"
 	"html/template"
+	"io"
 	"os"
 
-	"github.com/rhobs/testplan-viewer/models"
+	"github.com/rhobs/testplan-viewer/internal/models"
 )
 
 //go:embed templates/testplan.html
 var templateFS embed.FS
 
-// GenerateHTML generates an interactive HTML file from a test plan
-func GenerateHTML(testPlan *models.TestPlan, outputPath string) error {
-	// Create template with custom functions
+// Generator handles HTML generation from test plans
+type Generator struct {
+	template *template.Template
+}
+
+// New creates a new HTML generator with embedded template
+func New() (*Generator, error) {
 	funcMap := template.FuncMap{
 		"json": func(v interface{}) string {
 			b, _ := json.Marshal(v)
@@ -42,16 +47,24 @@ func GenerateHTML(testPlan *models.TestPlan, outputPath string) error {
 		Funcs(funcMap).
 		ParseFS(templateFS, "templates/testplan.html")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Create output file
+	return &Generator{template: tmpl}, nil
+}
+
+// GenerateHTML generates an interactive HTML file from a test plan
+func (g *Generator) GenerateHTML(testPlan *models.TestPlan, outputPath string) error {
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	// Execute template
-	return tmpl.Execute(f, testPlan)
+	return g.template.Execute(f, testPlan)
+}
+
+// GenerateToWriter generates HTML to an io.Writer (useful for testing)
+func (g *Generator) GenerateToWriter(testPlan *models.TestPlan, w io.Writer) error {
+	return g.template.Execute(w, testPlan)
 }

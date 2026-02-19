@@ -1,0 +1,149 @@
+{
+  "test_id": {
+    "metadata": {
+      "id": "test_id",
+      "name": "test_descriptive_name",
+      "title": "Human-Readable Test Title",
+      "category": "setup|deployment|configuration|monitoring|validation|troubleshooting",
+      "difficulty": "beginner|intermediate|advanced",
+      "estimated_time": "XX minutes|XX hours",
+      "hands_on_percentage": 70,
+      "source_test": "path/to/test_file.go:line_number (if derived from automated test)"
+    },
+    "learning": {
+      "objectives": [
+        "Clear, measurable learning objective 1",
+        "Clear, measurable learning objective 2",
+        "Clear, measurable learning objective 3"
+      ],
+      "concepts_covered": [
+        "concept_id_1",
+        "concept_id_2"
+      ],
+      "skills_gained": [
+        "Specific skill or capability gained",
+        "Another practical skill"
+      ],
+      "common_beginner_mistakes": [
+        {
+          "mistake": "Common error or misconception",
+          "consequence": "What happens when this mistake is made",
+          "how_to_avoid": "Specific advice to prevent this mistake"
+        }
+      ]
+    },
+    "test_execution": {
+      "objective": "One-sentence description of what this test validates or demonstrates",
+      "duration": "Realistic time estimate based on actual execution",
+      "dependencies": [
+        "test_id_1",
+        "test_id_2"
+      ],
+      "prerequisites": [
+        "Specific requirement 1 (e.g., 'AWS credentials configured')",
+        "Specific requirement 2"
+      ],
+      "steps": [
+        {
+          "step_number": 1,
+          "title": "Clear, action-oriented step title",
+          "learning_note": "What this step teaches or why it's important to understand",
+          "command": "exact command to execute",
+          "expected_output": "Expected output (can be partial pattern or exact match)",
+          "why_this_step": "Explanation of why this step is necessary in the overall workflow",
+          "documentation_reference": "https://docs.example.com/specific-page#section (optional)",
+          "common_errors": [
+            {
+              "error": "Error message or symptom",
+              "solution": "How to fix this specific error",
+              "learn_more": "https://docs.example.com/troubleshooting (optional)"
+            }
+          ]
+        },
+        {
+          "step_number": 2,
+          "title": "Next step title",
+          "learning_note": "Learning context for this step",
+          "command": "command to run",
+          "expected_output": "expected result",
+          "why_this_step": "Explanation of this step's purpose",
+          "common_errors": []
+        },
+        {
+          "step_number": 3,
+          "title": "Visual validation step (no command)",
+          "learning_note": "Understanding UI-based validation",
+          "command": null,
+          "expected_output": null,
+          "why_this_step": "Some validations require visual confirmation",
+          "manual_steps": [
+            "1. Open browser to https://example.com/dashboard",
+            "2. Navigate to 'Metrics' tab",
+            "3. Verify graphs show data from last 5 minutes"
+          ],
+          "common_errors": []
+        }
+      ],
+      "validation": {
+        "success_criteria": [
+          "Specific, measurable criterion 1",
+          "Specific, measurable criterion 2",
+          "Specific, measurable criterion 3"
+        ],
+        "how_to_verify": "Specific commands or checks to validate success",
+        "what_success_means": "Description of the successful end state",
+        "what_failure_means": "Description of what it means if validation fails"
+      }
+    },
+    "troubleshooting": {
+      "common_failures": [
+        {
+          "symptom": "Observable symptom or error message",
+          "cause": "Root cause explanation",
+          "debug_steps": [
+            "Step 1 to investigate",
+            "Step 2 to investigate",
+            "Step 3 to investigate"
+          ],
+          "fix": "How to resolve this issue",
+          "prevention": "How to prevent this issue in the future",
+          "documentation": "https://docs.example.com/troubleshooting-guide (optional)"
+        },
+        {
+          "symptom": "Another common failure mode",
+          "cause": "Why this happens",
+          "debug_steps": [
+            "Debugging approach"
+          ],
+          "fix": "Resolution steps",
+          "prevention": "Prevention strategy"
+        }
+      ],
+      "getting_help": [
+        "Resource 1 for help (documentation, forum, Slack channel)",
+        "Resource 2 for help (support case, email)",
+        "Resource 3 for help"
+      ]
+    },
+    "next_steps": {
+      "on_success": "What to do next after successful completion (e.g., 'Proceed to test_X' or 'Test plan complete')",
+      "bonus_exploration": [
+        "Optional deep-dive or exploration activity 1",
+        "Optional activity 2",
+        "Advanced topic to explore"
+      ]
+    },
+    "references": {
+      "documentation": [
+        "https://official-docs.example.com/relevant-topic",
+        "https://docs.example.com/advanced-concepts"
+      ],
+      "related_code": [
+        "https://github.com/org/repo/blob/main/path/to/code.go#L123-L456"
+      ],
+      "sops": [
+        "https://internal-docs.example.com/sop/procedure-name"
+      ]
+    }
+  }
+}
