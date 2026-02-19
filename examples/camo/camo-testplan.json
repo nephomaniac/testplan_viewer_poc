@@ -1,0 +1,719 @@
+{
+  "metadata": {
+    "document_title": "Configure AlertManager Operator (CAMO) Test Plan",
+    "version": "1.0",
+    "date": "2026-02-18",
+    "status": "draft",
+    "epic": "CAMO Operator Testing and Validation",
+    "purpose": "Comprehensive test plan for validating the Configure AlertManager Operator functionality, covering installation, configuration, monitoring, and troubleshooting across OpenShift environments",
+    "target_audience": "SRE Engineers, QE Team, Platform Engineers",
+    "estimated_total_time": "6-8 hours",
+    "learning_objectives": [
+      "Understand how CAMO dynamically configures Alertmanager based on secrets and configmaps",
+      "Learn the relationship between secrets (PagerDuty, GoAlert, DMS) and Alertmanager routing",
+      "Master troubleshooting techniques for Alertmanager configuration issues",
+      "Validate metrics and alerts exposed by CAMO",
+      "Practice safe testing with backup/cleanup patterns for state-modifying operations"
+    ]
+  },
+  "learning_path": {
+    "description": "Progressive learning path from basic installation validation to advanced troubleshooting",
+    "sequence": [
+      "test_verify_camo_deployment",
+      "test_read_alertmanager_config",
+      "test_create_pagerduty_secret",
+      "test_cleanup_pagerduty_secret"
+    ],
+    "alternative_paths": {
+      "quick_validation": [
+        "test_verify_camo_deployment",
+        "test_read_alertmanager_config"
+      ]
+    }
+  },
+  "prerequisites": {
+    "required_knowledge": [
+      {
+        "topic": "OpenShift/Kubernetes basics",
+        "level": "intermediate",
+        "resources": [
+          "https://docs.openshift.com/container-platform/latest/welcome/index.html"
+        ]
+      },
+      {
+        "topic": "Prometheus Alertmanager configuration",
+        "level": "beginner",
+        "resources": [
+          "https://prometheus.io/docs/alerting/latest/configuration/"
+        ]
+      },
+      {
+        "topic": "Kubernetes Operators",
+        "level": "beginner",
+        "resources": [
+          "https://kubernetes.io/docs/concepts/extend-kubernetes/operator/"
+        ]
+      }
+    ],
+    "required_access": [
+      {
+        "name": "OpenShift Cluster Admin Access",
+        "purpose": "Required to create/modify secrets and configmaps in openshift-monitoring namespace",
+        "how_to_get": "Request cluster-admin role from cluster administrator",
+        "verification": "oc auth can-i create secrets -n openshift-monitoring"
+      },
+      {
+        "name": "Cluster Monitoring Access",
+        "purpose": "View Prometheus metrics and Alertmanager configuration",
+        "how_to_get": "cluster-monitoring-view role or higher",
+        "verification": "oc auth can-i get prometheuses -n openshift-monitoring"
+      }
+    ],
+    "environment_setup": {
+      "variables": {
+        "KUBECONFIG": "Path to your cluster kubeconfig",
+        "TEST_NAMESPACE": "openshift-monitoring"
+      },
+      "tools": [
+        {
+          "name": "oc",
+          "install": "Download from OpenShift console or https://mirror.openshift.com/pub/openshift-v4/clients/ocp/",
+          "verify": "oc version"
+        },
+        {
+          "name": "jq",
+          "install": "brew install jq (macOS) or apt-get install jq (Linux)",
+          "verify": "jq --version"
+        },
+        {
+          "name": "yq",
+          "install": "brew install yq (macOS) or wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64",
+          "verify": "yq --version"
+        }
+      ]
+    }
+  },
+  "concepts": {
+    "camo_operator": {
+      "title": "Configure AlertManager Operator (CAMO)",
+      "description": "CAMO is a Kubernetes operator that watches for secrets and configmaps in openshift-monitoring namespace and dynamically updates Alertmanager configuration based on their presence or absence. It enables GitOps-friendly alert routing to PagerDuty, GoAlert, and Dead Man's Snitch.",
+      "why_it_matters": "CAMO eliminates manual Alertmanager configuration management. When you create a pd-secret, CAMO automatically configures PagerDuty routing. Delete the secret, and routing is automatically removed. This makes alert configuration declarative and prevents configuration drift.",
+      "related_tests": [
+        "test_verify_camo_deployment",
+        "test_create_pagerduty_secret",
+        "test_verify_pd_routing"
+      ]
+    },
+    "alertmanager_config": {
+      "title": "Alertmanager Configuration Secret",
+      "description": "Alertmanager configuration is stored in a Secret named 'alertmanager-main' in the openshift-monitoring namespace. The secret contains an 'alertmanager.yaml' key with the full routing configuration.",
+      "why_it_matters": "Understanding how Alertmanager config is stored is crucial for troubleshooting. CAMO reads this secret, modifies the YAML, validates it, and writes it back. Invalid configs are rejected to prevent Alertmanager failures.",
+      "related_tests": [
+        "test_read_alertmanager_config",
+        "test_verify_pd_routing",
+        "test_troubleshoot_config_validation_failure"
+      ]
+    },
+    "config_validation": {
+      "title": "Alertmanager Configuration Validation",
+      "description": "CAMO validates all configuration changes using Alertmanager's official config.Load() function before writing to the secret. This prevents invalid configurations from breaking Alertmanager.",
+      "why_it_matters": "Invalid Alertmanager configs cause Alertmanager pods to crash-loop. CAMO's validation prevents this by rejecting bad configs and exposing a metric (alertmanager_config_validation_failed) to monitor validation status.",
+      "related_tests": [
+        "test_validate_config_validation_metric",
+        "test_troubleshoot_config_validation_failure"
+      ]
+    },
+    "pagerduty_integration": {
+      "title": "PagerDuty Integration",
+      "description": "CAMO configures PagerDuty routing when a secret named 'pd-secret' exists with key 'PAGERDUTY_KEY' containing a PagerDuty integration key. Alerts from managed namespaces are routed to PagerDuty automatically.",
+      "why_it_matters": "PagerDuty is the primary escalation path for critical alerts. Understanding how CAMO configures PagerDuty routing helps troubleshoot missing or duplicate pages.",
+      "related_tests": [
+        "test_create_pagerduty_secret",
+        "test_verify_pd_routing",
+        "test_cleanup_pagerduty_secret"
+      ]
+    },
+    "goalert_integration": {
+      "title": "GoAlert Integration",
+      "description": "CAMO configures GoAlert routing when 'goalert-secret' exists with keys GOALERT_URL_HIGH, GOALERT_URL_LOW, and GOALERT_HEARTBEAT. High-priority alerts page, low-priority alerts notify without paging.",
+      "why_it_matters": "GoAlert provides alert routing with severity-based escalation. High/low separation reduces alert fatigue while ensuring critical issues still page on-call engineers.",
+      "related_tests": [
+        "test_create_goalert_secret",
+        "test_verify_goalert_routing",
+        "test_cleanup_goalert_secret"
+      ]
+    },
+    "dms_integration": {
+      "title": "Dead Man's Snitch Integration",
+      "description": "CAMO configures Dead Man's Snitch routing when 'dms-secret' exists with key 'SNITCH_URL' containing a DMS webhook URL. This enables cluster heartbeat monitoring - if Alertmanager stops sending heartbeats, DMS pages.",
+      "why_it_matters": "Dead Man's Snitch detects complete monitoring failures. If the entire monitoring stack goes down, DMS will page because it stopped receiving heartbeats.",
+      "related_tests": [
+        "test_create_dms_secret",
+        "test_verify_dms_routing",
+        "test_cleanup_dms_secret"
+      ]
+    },
+    "cluster_readiness": {
+      "title": "Cluster Readiness Check (osd-cluster-ready)",
+      "description": "CAMO waits for the 'osd-cluster-ready' Job to complete before configuring PagerDuty. This prevents alert noise during cluster installation when many components are starting up.",
+      "why_it_matters": "New clusters fire many alerts during installation. Delaying PagerDuty configuration until the cluster is ready prevents unnecessary pages to on-call engineers.",
+      "related_tests": [
+        "test_verify_cluster_readiness_check"
+      ]
+    }
+  },
+  "testcases": {
+    "test_verify_camo_deployment": {
+      "metadata": {
+        "id": "test_verify_camo_deployment",
+        "name": "test_verify_camo_deployment",
+        "title": "Verify CAMO Operator Deployment",
+        "category": "deployment",
+        "difficulty": "beginner",
+        "estimated_time": "10 minutes",
+        "hands_on_percentage": 80,
+        "system_impact": {
+          "type": "read-only",
+          "description": "Only queries cluster resources to verify CAMO deployment status",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "temporary",
+          "risk_level": "low"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": false
+        },
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Verify CAMO operator is deployed and running",
+          "Check CSV (ClusterServiceVersion) status",
+          "Understand operator deployment patterns in OpenShift"
+        ],
+        "concepts_covered": [
+          "camo_operator"
+        ],
+        "skills_gained": [
+          "Check operator deployment status using oc commands",
+          "Verify ClusterServiceVersion (CSV) managed by OLM",
+          "Understand operator lifecycle management"
+        ]
+      },
+      "test_execution": {
+        "objective": "Validate that CAMO operator is installed, running, and managed by OLM",
+        "duration": "10 minutes",
+        "dependencies": [],
+        "prerequisites": [
+          "Access to openshift-monitoring namespace",
+          "cluster-monitoring-view role or higher"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Verify CAMO deployment exists and is available",
+            "learning_note": "Deployments manage the operator pod. An available deployment means the operator is running.",
+            "command": "oc get deployment configure-alertmanager-operator -n openshift-monitoring",
+            "expected_output": "configure-alertmanager-operator   1/1     1            1",
+            "why_this_step": "Confirms the operator deployment exists and has the desired number of replicas running",
+            "common_errors": [
+              {
+                "error": "Error from server (NotFound): deployments.apps \"configure-alertmanager-operator\" not found",
+                "solution": "CAMO operator is not installed. Check if OLM has installed the operator or install manually.",
+                "learn_more": "https://docs.openshift.com/container-platform/latest/operators/understanding/olm/olm-understanding-olm.html"
+              }
+            ]
+          },
+          {
+            "step_number": 2,
+            "title": "Check CAMO pod is running",
+            "learning_note": "The actual operator process runs inside a pod. Pod should be in Running state with no restarts.",
+            "command": "oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator",
+            "expected_output": "configure-alertmanager-operator-.*   1/1     Running",
+            "why_this_step": "Verifies the operator pod is healthy and not crash-looping",
+            "common_errors": [
+              {
+                "error": "Pod status shows CrashLoopBackOff",
+                "solution": "Check pod logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator",
+                "learn_more": ""
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Verify ClusterServiceVersion (CSV) exists and succeeded",
+            "learning_note": "CSV is how OLM tracks operator installation. Succeeded status means OLM successfully installed and is managing the operator.",
+            "command": "oc get csv -n openshift-monitoring -l operators.coreos.com/configure-alertmanager-operator.openshift-monitoring",
+            "expected_output": "configure-alertmanager-operator.*   Succeeded",
+            "why_this_step": "Confirms OLM has successfully installed and is managing the CAMO operator"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Deployment shows 1/1 available replicas",
+            "Pod is in Running state with 1/1 containers ready",
+            "CSV phase is 'Succeeded'"
+          ],
+          "how_to_verify": "Run: oc get deployment,pod,csv -n openshift-monitoring -l name=configure-alertmanager-operator",
+          "what_success_means": "CAMO operator is installed, running, and being managed by OLM correctly",
+          "what_failure_means": "Operator is not installed, not running, or OLM is not managing it properly. Check OLM logs and CSV status."
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [
+          {
+            "symptom": "Deployment exists but pod keeps restarting",
+            "cause": "Operator failing to start, likely due to RBAC issues or invalid configuration",
+            "debug_steps": [
+              "Check pod logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator",
+              "Check for RBAC errors in logs",
+              "Verify ServiceAccount exists: oc get sa configure-alertmanager-operator -n openshift-monitoring"
+            ],
+            "fix": "Review logs for specific error, check RBAC permissions",
+            "prevention": "Ensure OLM has properly installed all RBAC resources"
+          }
+        ],
+        "getting_help": [
+          "Check operator logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator",
+          "Check OLM logs: oc logs -n openshift-operator-lifecycle-manager deployment/olm-operator",
+          "Review CSV status: oc describe csv -n openshift-monitoring"
+        ]
+      },
+      "next_steps": {
+        "on_success": "Proceed to test_verify_rbac to validate operator permissions",
+        "bonus_exploration": [
+          "Explore CSV details: oc get csv -n openshift-monitoring -o yaml",
+          "Check operator version: oc get deployment configure-alertmanager-operator -n openshift-monitoring -o jsonpath='{.spec.template.spec.containers[0].image}'"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md"
+        ],
+        "related_code": [
+          "https://github.com/openshift/configure-alertmanager-operator/blob/master/main.go"
+        ],
+        "sops": []
+      }
+    },
+    "test_read_alertmanager_config": {
+      "metadata": {
+        "id": "test_read_alertmanager_config",
+        "name": "test_read_alertmanager_config",
+        "title": "Read and Inspect Alertmanager Configuration",
+        "category": "configuration",
+        "difficulty": "beginner",
+        "estimated_time": "15 minutes",
+        "hands_on_percentage": 70,
+        "system_impact": {
+          "type": "read-only",
+          "description": "Reads alertmanager-main secret and displays configuration - makes no changes",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "temporary",
+          "risk_level": "low"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": false
+        },
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand how Alertmanager configuration is stored in Kubernetes",
+          "Learn to extract and read YAML from secrets",
+          "Identify receivers and routes in Alertmanager config"
+        ],
+        "concepts_covered": [
+          "alertmanager_config"
+        ],
+        "skills_gained": [
+          "Extract and decode base64-encoded secret data",
+          "Parse YAML configuration",
+          "Understand Alertmanager routing structure"
+        ]
+      },
+      "test_execution": {
+        "objective": "Read and inspect the current Alertmanager configuration managed by CAMO",
+        "duration": "15 minutes",
+        "dependencies": [],
+        "prerequisites": [
+          "Access to openshift-monitoring namespace"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Verify alertmanager-main secret exists",
+            "learning_note": "Alertmanager configuration is stored in a Secret, not a ConfigMap. This allows Prometheus Operator to reload Alertmanager when config changes.",
+            "command": "oc get secret alertmanager-main -n openshift-monitoring",
+            "expected_output": "alertmanager-main   Opaque   1",
+            "why_this_step": "Confirms the secret exists before attempting to read it"
+          },
+          {
+            "step_number": 2,
+            "title": "Extract and display alertmanager.yaml from secret",
+            "learning_note": "Secrets store data base64-encoded. The -o jsonpath extracts the alertmanager.yaml key and base64 decodes it.",
+            "command": "oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d",
+            "expected_output": "global:\\n  resolve_timeout:",
+            "why_this_step": "Retrieves the actual Alertmanager YAML configuration",
+            "documentation_reference": "https://prometheus.io/docs/alerting/latest/configuration/"
+          },
+          {
+            "step_number": 3,
+            "title": "List all receivers in the configuration",
+            "learning_note": "Receivers define WHERE alerts are sent (PagerDuty, GoAlert, DMS, etc.). CAMO dynamically adds/removes receivers based on secrets.",
+            "command": "oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval '.receivers[].name' -",
+            "expected_output": "null\npagerduty\ngoalert\ndms",
+            "why_this_step": "Shows which alert destinations are currently configured"
+          },
+          {
+            "step_number": 4,
+            "title": "Check if PagerDuty receiver exists",
+            "learning_note": "If pd-secret exists, CAMO should have created a 'pagerduty' receiver. This command checks if it's present.",
+            "command": "oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval '.receivers[] | select(.name == \"pagerduty\")' -",
+            "expected_output": "name: pagerduty",
+            "why_this_step": "Validates that CAMO configured PagerDuty routing if pd-secret exists"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "alertmanager-main secret exists",
+            "alertmanager.yaml key is present and decodable",
+            "Configuration contains valid YAML",
+            "At minimum, 'null' receiver exists (default catch-all)"
+          ],
+          "how_to_verify": "Extract config and validate with yq: oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval . -",
+          "what_success_means": "Alertmanager configuration is present and readable",
+          "what_failure_means": "Secret is missing or corrupted. CAMO may not have reconciled yet or encountered errors."
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [],
+        "getting_help": [
+          "Check CAMO logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator",
+          "Verify secret was created: oc describe secret alertmanager-main -n openshift-monitoring"
+        ]
+      },
+      "next_steps": {
+        "on_success": "Proceed to test_create_pagerduty_secret to test dynamic configuration",
+        "bonus_exploration": [
+          "Examine full config structure with yq",
+          "Compare receivers section before and after creating secrets"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://prometheus.io/docs/alerting/latest/configuration/",
+          "https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    },
+    "test_create_pagerduty_secret": {
+      "metadata": {
+        "id": "test_create_pagerduty_secret",
+        "name": "test_create_pagerduty_secret",
+        "title": "Create PagerDuty Secret for Alert Routing",
+        "category": "configuration",
+        "difficulty": "intermediate",
+        "estimated_time": "20 minutes",
+        "hands_on_percentage": 75,
+        "system_impact": {
+          "type": "modifies-state",
+          "description": "Creates pd-secret in openshift-monitoring namespace, which triggers CAMO to reconfigure Alertmanager",
+          "affected_resources": [
+            "Secret: pd-secret in openshift-monitoring",
+            "Secret: alertmanager-main (modified by CAMO)"
+          ],
+          "reversible": true,
+          "persistence": "permanent",
+          "risk_level": "medium"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": true,
+          "cleanup_test": "test_cleanup_pagerduty_secret",
+          "restores_state": false
+        },
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": true,
+          "warning_message": "\u26a0\ufe0f This test creates a PagerDuty secret that will cause CAMO to reconfigure Alertmanager. Alerts may start routing to the test PagerDuty key. Run cleanup test afterward to remove.",
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand how CAMO watches secrets to trigger reconciliation",
+          "Learn the structure of pd-secret and required keys",
+          "Observe automatic Alertmanager reconfiguration when secret is created"
+        ],
+        "concepts_covered": [
+          "pagerduty_integration",
+          "camo_operator"
+        ],
+        "skills_gained": [
+          "Create secrets with specific keys using oc create secret",
+          "Trigger operator reconciliation by creating watched resources",
+          "Verify operator reactions to resource changes"
+        ]
+      },
+      "test_execution": {
+        "objective": "Create pd-secret and verify CAMO automatically adds PagerDuty receiver to Alertmanager configuration",
+        "duration": "20 minutes",
+        "dependencies": [
+          "test_read_alertmanager_config"
+        ],
+        "prerequisites": [
+          "cluster-admin or ability to create secrets in openshift-monitoring",
+          "Test PagerDuty integration key (use TEST_KEY_CHANGEME for testing)"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Verify pd-secret does NOT exist (clean state)",
+            "learning_note": "Before creating a secret, verify it doesn't already exist to ensure we're testing CAMO's create behavior.",
+            "command": "oc get secret pd-secret -n openshift-monitoring 2>&1",
+            "expected_output": "Error from server (NotFound)",
+            "why_this_step": "Ensures clean starting state - if secret exists, delete it first or skip this test"
+          },
+          {
+            "step_number": 2,
+            "title": "Create pd-secret with test PagerDuty key",
+            "learning_note": "CAMO looks for a secret named 'pd-secret' with key 'PAGERDUTY_KEY'. When created, CAMO's watch triggers reconciliation.",
+            "command": "oc create secret generic pd-secret --from-literal=PAGERDUTY_KEY=TEST_KEY_CHANGEME -n openshift-monitoring",
+            "expected_output": "secret/pd-secret created",
+            "why_this_step": "Creates the secret that CAMO watches, triggering automatic Alertmanager reconfiguration",
+            "common_errors": [
+              {
+                "error": "Error from server (AlreadyExists): secrets \"pd-secret\" already exists",
+                "solution": "Secret already exists. Delete it first: oc delete secret pd-secret -n openshift-monitoring, or use --dry-run=client to test the command",
+                "learn_more": ""
+              },
+              {
+                "error": "Error from server (Forbidden): secrets is forbidden",
+                "solution": "You lack permissions to create secrets in openshift-monitoring. Request cluster-admin role.",
+                "learn_more": ""
+              }
+            ]
+          },
+          {
+            "step_number": 3,
+            "title": "Wait for CAMO to reconcile (30-60 seconds)",
+            "learning_note": "Operator watches are eventually consistent. CAMO needs time to detect the new secret, reconcile, and update alertmanager-main.",
+            "command": "sleep 60 && echo 'Reconciliation period complete'",
+            "expected_output": "Reconciliation period complete",
+            "why_this_step": "Gives CAMO time to detect the secret and update Alertmanager configuration"
+          },
+          {
+            "step_number": 4,
+            "title": "Verify CAMO added PagerDuty receiver to Alertmanager config",
+            "learning_note": "After reconciliation, alertmanager-main secret should now contain a 'pagerduty' receiver configured with the routing key from pd-secret.",
+            "command": "oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval '.receivers[] | select(.name == \"pagerduty\")' -",
+            "expected_output": "name: pagerduty",
+            "why_this_step": "Confirms CAMO successfully added PagerDuty receiver to Alertmanager configuration"
+          },
+          {
+            "step_number": 5,
+            "title": "Check pd_secret_exists metric is 1",
+            "learning_note": "CAMO exposes metrics for monitoring. pd_secret_exists should be 1 when pd-secret exists, 0 when absent.",
+            "command": "oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep 'pd_secret_exists'",
+            "expected_output": "pd_secret_exists 1",
+            "why_this_step": "Validates CAMO's internal state matches the actual secret presence"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "pd-secret created successfully",
+            "Alertmanager config contains 'pagerduty' receiver",
+            "pd_secret_exists metric shows 1",
+            "No errors in CAMO operator logs"
+          ],
+          "how_to_verify": "Check receiver exists: oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval '.receivers[].name' -",
+          "what_success_means": "CAMO successfully detected pd-secret and reconfigured Alertmanager to route alerts to PagerDuty",
+          "what_failure_means": "CAMO failed to reconcile. Check operator logs for errors. Secret may have wrong key name or CAMO may not have RBAC permissions."
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [
+          {
+            "symptom": "Secret created but pagerduty receiver not in config after 2 minutes",
+            "cause": "CAMO reconciliation failed or operator is not running",
+            "debug_steps": [
+              "Check CAMO pod is running: oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator",
+              "Check CAMO logs for errors: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator --tail=50",
+              "Verify secret has correct key: oc get secret pd-secret -n openshift-monitoring -o jsonpath='{.data.PAGERDUTY_KEY}'"
+            ],
+            "fix": "Review logs for specific error, ensure secret has PAGERDUTY_KEY key (not pagerduty_key or other variations)",
+            "prevention": "Always check operator logs after creating secrets to confirm reconciliation succeeded"
+          }
+        ],
+        "getting_help": [
+          "Check CAMO logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator",
+          "Verify secret structure: oc get secret pd-secret -n openshift-monitoring -o yaml",
+          "Check CAMO metrics: oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics"
+        ]
+      },
+      "next_steps": {
+        "on_success": "\u26a0\ufe0f CLEANUP REQUIRED: Run test_cleanup_pagerduty_secret to remove the test secret and restore Alertmanager config",
+        "bonus_exploration": [
+          "Examine the complete pagerduty receiver config with yq",
+          "Watch CAMO logs during reconciliation: oc logs -f -n openshift-monitoring deployment/configure-alertmanager-operator"
+        ]
+      },
+      "references": {
+        "documentation": [
+          "https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md#secret-controller"
+        ],
+        "related_code": [
+          "https://github.com/openshift/configure-alertmanager-operator/blob/master/controllers/secret_controller.go"
+        ],
+        "sops": []
+      }
+    },
+    "test_cleanup_pagerduty_secret": {
+      "metadata": {
+        "id": "test_cleanup_pagerduty_secret",
+        "name": "test_cleanup_pagerduty_secret",
+        "title": "Cleanup: Remove PagerDuty Secret",
+        "category": "cleanup",
+        "difficulty": "beginner",
+        "estimated_time": "10 minutes",
+        "hands_on_percentage": 80,
+        "system_impact": {
+          "type": "modifies-state",
+          "description": "Deletes pd-secret, which triggers CAMO to remove PagerDuty receiver from Alertmanager config",
+          "affected_resources": [
+            "Secret: pd-secret (deleted)",
+            "Secret: alertmanager-main (modified by CAMO to remove PagerDuty receiver)"
+          ],
+          "reversible": true,
+          "persistence": "permanent",
+          "risk_level": "low"
+        },
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": true,
+          "state_verification": null
+        },
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+      "learning": {
+        "objectives": [
+          "Understand how deleting secrets triggers CAMO reconciliation",
+          "Learn cleanup procedures for test resources",
+          "Verify system returns to original state after cleanup"
+        ],
+        "concepts_covered": [
+          "pagerduty_integration",
+          "camo_operator"
+        ],
+        "skills_gained": [
+          "Delete Kubernetes secrets safely",
+          "Verify cleanup completed successfully",
+          "Understand declarative resource management"
+        ]
+      },
+      "test_execution": {
+        "objective": "Remove pd-secret and verify CAMO automatically removes PagerDuty receiver from Alertmanager",
+        "duration": "10 minutes",
+        "dependencies": [
+          "test_create_pagerduty_secret"
+        ],
+        "prerequisites": [
+          "pd-secret exists from previous test"
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Verify pd-secret exists before deletion",
+            "learning_note": "Always verify a resource exists before attempting to delete it to avoid confusion.",
+            "command": "oc get secret pd-secret -n openshift-monitoring",
+            "expected_output": "pd-secret   Opaque   1",
+            "why_this_step": "Confirms the secret we're about to delete actually exists"
+          },
+          {
+            "step_number": 2,
+            "title": "Delete pd-secret",
+            "learning_note": "Deleting the secret triggers CAMO to reconcile and remove PagerDuty configuration from Alertmanager.",
+            "command": "oc delete secret pd-secret -n openshift-monitoring",
+            "expected_output": "secret \"pd-secret\" deleted",
+            "why_this_step": "Removes the test secret, triggering CAMO to clean up PagerDuty routing"
+          },
+          {
+            "step_number": 3,
+            "title": "Wait for CAMO to reconcile",
+            "command": "sleep 60 && echo 'Cleanup reconciliation complete'",
+            "expected_output": "Cleanup reconciliation complete",
+            "why_this_step": "Gives CAMO time to detect deletion and update Alertmanager"
+          },
+          {
+            "step_number": 4,
+            "title": "Verify PagerDuty receiver removed from Alertmanager config",
+            "learning_note": "After cleanup, the pagerduty receiver should be gone. Only the default 'null' receiver should remain.",
+            "command": "oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval '.receivers[] | select(.name == \"pagerduty\")' -",
+            "expected_output": "",
+            "why_this_step": "Confirms CAMO removed PagerDuty receiver, restoring original configuration"
+          },
+          {
+            "step_number": 5,
+            "title": "Verify pd_secret_exists metric is 0",
+            "command": "oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep 'pd_secret_exists'",
+            "expected_output": "pd_secret_exists 0",
+            "why_this_step": "Confirms CAMO's internal state reflects secret deletion"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "pd-secret successfully deleted",
+            "Pagerduty receiver removed from Alertmanager config",
+            "pd_secret_exists metric shows 0",
+            "System returned to pre-test state"
+          ],
+          "how_to_verify": "List all receivers: oc get secret alertmanager-main -n openshift-monitoring -o jsonpath='{.data.alertmanager\\.yaml}' | base64 -d | yq eval '.receivers[].name' -",
+          "what_success_means": "Cleanup successful - system returned to original state before test",
+          "what_failure_means": "Cleanup failed - secret deleted but Alertmanager config not updated. Check CAMO logs."
+        }
+      },
+      "troubleshooting": {
+        "common_failures": [],
+        "getting_help": [
+          "Check CAMO logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator --tail=50"
+        ]
+      },
+      "next_steps": {
+        "on_success": "\u2705 Cleanup complete. Proceed to test_create_goalert_secret to test GoAlert integration",
+        "bonus_exploration": []
+      },
+      "references": {
+        "documentation": [
+          "https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md"
+        ],
+        "related_code": [],
+        "sops": []
+      }
+    }
+  }
+}
