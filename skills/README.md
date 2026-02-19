@@ -29,6 +29,42 @@ This suite provides end-to-end test plan management through three focused skills
     └─────────────────────┘
 ```
 
+## ⚙️ Built-in Self-Verification
+
+**All skills include automatic self-verification to ensure they're always up to date.**
+
+Before executing, each skill:
+1. ✅ Checks if it matches the version in the repository
+2. ✅ Compares against remote for updates
+3. ✅ Prompts you if differences are found
+4. ✅ Offers options to update or continue
+
+**Why this matters:**
+- Skills evolve and improve over time
+- Ensures you're using latest features
+- Prevents drift from source of truth
+- Transparent and user-controlled
+
+[→ See how self-verification works](SKILL-VERIFICATION.md)
+
+**Quick example:**
+
+```
+User: "Use testplan-generator skill"
+
+Claude:
+⚠️ Remote repository has a newer version (1 hour ago)
+Options:
+1. Continue with current
+2. Use latest from repo (recommended)
+3. Show me the diff
+4. Cancel - I'll update first
+
+What would you like to do?
+```
+
+---
+
 ## The Three Skills
 
 ### 1. testplan-generator

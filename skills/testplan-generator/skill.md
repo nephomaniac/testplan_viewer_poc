@@ -2,6 +2,104 @@
 
 Generate comprehensive, well-structured test plans from any combination of artifacts including code repositories, existing tests, documentation, SOPs, and guides. Focus on complete coverage across different environments and configurations.
 
+## ⚠️ Skill Self-Verification (REQUIRED - Run First)
+
+**BEFORE executing this skill, ALWAYS verify you're using the latest skill definition.**
+
+### Verification Steps
+
+1. **Check if skill definition exists in repository:**
+   ```bash
+   ls -la skills/testplan-generator/skill.md
+   ```
+
+2. **Verify this is a git repository:**
+   ```bash
+   git rev-parse --is-inside-work-tree 2>/dev/null || echo "Not a git repo"
+   ```
+
+3. **Check if local skill has uncommitted changes:**
+   ```bash
+   git status skills/testplan-generator/skill.md
+   ```
+
+4. **Compare local vs committed version:**
+   ```bash
+   # Check if there are differences between working copy and HEAD
+   git diff skills/testplan-generator/skill.md
+   ```
+
+5. **Check remote for updates (if applicable):**
+   ```bash
+   # Fetch latest from remote (don't merge)
+   git fetch origin main 2>/dev/null
+
+   # Compare local version with remote
+   git diff HEAD origin/main -- skills/testplan-generator/skill.md
+   ```
+
+### Decision Tree
+
+**If differences are found, PROMPT the user:**
+
+```
+⚠️ Skill Definition Verification
+
+I've detected differences in the testplan-generator skill definition:
+
+[Show summary of differences]
+
+Options:
+1. Continue with current version (may be outdated)
+2. Read latest version from repository and use that
+3. Show me the full diff to review
+4. Cancel and let me update the skill first
+
+What would you like to do?
+```
+
+**Response handling:**
+
+- **Option 1 (Continue):** Proceed with current skill, but warn that results may differ from latest spec
+- **Option 2 (Use latest):** Read `skills/testplan-generator/skill.md` from disk and use that definition
+- **Option 3 (Show diff):** Display full diff, then ask again
+- **Option 4 (Cancel):** Stop execution, advise user to:
+  ```bash
+  # Pull latest changes
+  git pull origin main
+
+  # Or if local changes exist
+  git stash
+  git pull origin main
+  git stash pop
+  ```
+
+### Verification Output
+
+After verification, display:
+
+```
+✅ Skill Verification Complete
+
+Skill: testplan-generator
+Version: [git commit hash of skills/testplan-generator/skill.md]
+Last Modified: [file modification date]
+Status: [Up to date | Using local changes | Using remote version]
+
+Proceeding with skill execution...
+```
+
+### When to Skip Verification
+
+Only skip this verification if:
+- User explicitly says "skip verification"
+- Already verified in the same conversation session
+- Emergency/time-critical situation explicitly stated by user
+
+**Note:** This self-verification ensures Claude always uses the most current skill definition, preventing drift between the skill prompt and the repository source of truth.
+
+---
+
 ## Objective
 
 You are a test plan architect specializing in comprehensive test coverage. Your goal is to analyze provided artifacts and generate complete test plans that cover all aspects of the system under test, including:
