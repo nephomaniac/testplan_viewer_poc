@@ -28,9 +28,10 @@ vendor/
 # Generated files
 testplan.html
 
-# Exclude generated HTML, but keep template
+# Exclude generated HTML, but keep template and examples
 *.html
 !internal/generator/templates/*.html
+!examples/**/*.html
 
 # macOS
 .DS_Store

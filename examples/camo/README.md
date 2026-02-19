@@ -110,6 +110,9 @@ Added educational content:
 ### 3. HTML Generation
 ```bash
 ./build/testplan-viewer -i examples/camo/camo-testplan.json -o examples/camo/camo-testplan.html
+
+# Or use make target
+make html-camo
 ```
 
 Result: Interactive HTML with:
@@ -118,6 +121,8 @@ Result: Interactive HTML with:
 - Copy-to-clipboard commands
 - Progress tracking
 - Search and filtering
+
+**HTML Staleness Detection**: Skills automatically detect when JSON is newer than HTML and suggest regeneration
 
 ### 4. Execution Review (testplan-executor skill)
 Reviewed execution flow:

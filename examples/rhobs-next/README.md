@@ -169,9 +169,14 @@ After structure fixes:
 ```bash
 ./build/testplan-viewer -i examples/rhobs-next/rhobs-next-testplan.json \
   -o examples/rhobs-next/rhobs-next-testplan.html
+
+# Or use make target
+make html-rhobs-next
 ```
 
-**Result**: ✅ Success - 141 KB HTML file with 5 tests, 10 concepts, interactive features
+**Result**: ✅ Success - 440 KB HTML file with 5 tests, 10 concepts, interactive features
+
+**HTML Staleness Detection**: Skills automatically detect when JSON is newer than HTML and suggest regeneration
 
 **Limitations Discovered**:
 - Hyperlinks render as plain text (markdown not parsed) - improvement #4

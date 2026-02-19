@@ -1,4 +1,4 @@
-.PHONY: build test clean run install dist help
+.PHONY: build test clean run install dist help html html-camo html-rhobs-next html-all
 
 # Build variables
 BINARY_NAME=testplan-viewer
@@ -48,6 +48,25 @@ dist:
 	GOOS=linux GOARCH=amd64 go build -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
 	GOOS=windows GOARCH=amd64 go build -o $(DIST_DIR)/$(BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
 	@echo "✅ Distribution binaries built in $(DIST_DIR)/"
+
+## html-camo: Generate HTML for CAMO test plan
+html-camo: build
+	@echo "🎨 Generating HTML for CAMO test plan..."
+	./$(BUILD_DIR)/$(BINARY_NAME) -i examples/camo/camo-testplan.json -o examples/camo/camo-testplan.html
+	@echo "✅ Generated: examples/camo/camo-testplan.html"
+
+## html-rhobs-next: Generate HTML for RHOBS-Next test plan
+html-rhobs-next: build
+	@echo "🎨 Generating HTML for RHOBS-Next test plan..."
+	./$(BUILD_DIR)/$(BINARY_NAME) -i examples/rhobs-next/rhobs-next-testplan.json -o examples/rhobs-next/rhobs-next-testplan.html
+	@echo "✅ Generated: examples/rhobs-next/rhobs-next-testplan.html"
+
+## html-all: Generate HTML for all test plans
+html-all: html-camo html-rhobs-next
+	@echo "✅ All test plan HTMLs generated"
+
+## html: Alias for html-all
+html: html-all
 
 ## help: Show this help message
 help:

@@ -1,0 +1,2712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configure AlertManager Operator (CAMO) Test Plan</title>
+
+    
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        beginner: '#10b981',
+                        intermediate: '#f59e0b',
+                        advanced: '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        .difficulty-badge {
+            @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide;
+        }
+
+        .difficulty-beginner {
+            @apply bg-green-100 text-green-800;
+        }
+
+        .difficulty-intermediate {
+            @apply bg-yellow-100 text-yellow-800;
+        }
+
+        .difficulty-advanced {
+            @apply bg-red-100 text-red-800;
+        }
+
+        .progress-ring {
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        @media print {
+            .no-print { display: none; }
+            .test-card { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50" x-data="testPlanApp()" x-init="init()">
+
+    
+    <div class="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg">
+        <div class="container mx-auto px-6 py-8">
+            <h1 class="text-4xl font-bold mb-2">Configure AlertManager Operator (CAMO) Test Plan</h1>
+            <p class="text-blue-100 text-lg">Comprehensive test plan for validating the Configure AlertManager Operator functionality, covering installation, configuration, monitoring, and troubleshooting across OpenShift environments</p>
+
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <span class="opacity-75">Target Audience:</span>
+                    <div class="font-semibold">SRE Engineers, QE Team, Platform Engineers</div>
+                </div>
+                <div>
+                    <span class="opacity-75">Total Time:</span>
+                    <div class="font-semibold">6-8 hours</div>
+                </div>
+                <div>
+                    <span class="opacity-75">Status:</span>
+                    <div class="font-semibold">draft</div>
+                </div>
+                <div>
+                    <span class="opacity-75">Epic:</span>
+                    <div class="font-semibold">CAMO Operator Testing and Validation</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="bg-white border-b sticky top-0 z-40 shadow-sm no-print">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-700">Your Progress</span>
+                <span class="text-sm text-gray-600" x-text="Math.round(progressPercentage) + '%'"></span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                     :style="'width: ' + progressPercentage + '%'"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-6 py-8">
+
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6 no-print">
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                    <input type="text"
+                           x-model="searchTerm"
+                           placeholder="Search tests, steps, concepts..."
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+                    <select x-model="difficultyFilter"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Levels</option>
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Production Safety</label>
+                    <select x-model="productionSafetyFilter"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Tests</option>
+                        <option value="production-safe">✅ Production Safe Only</option>
+                        <option value="test-only">⚠️ Test Environment Only</option>
+                    </select>
+                </div>
+            </div>
+
+            
+            <details class="mb-4">
+                <summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 mb-2">
+                    🔍 Advanced Filters (Test Type, Impact, RBAC, Input Validation)
+                </summary>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Test Type</label>
+                        <select x-model="testTypeFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All Types</option>
+                            <option value="setup">Setup</option>
+                            <option value="install">Install</option>
+                            <option value="validation">Validation</option>
+                            <option value="negative">Negative Testing</option>
+                            <option value="load">Load Testing</option>
+                            <option value="performance">Performance</option>
+                            <option value="security">Security</option>
+                            <option value="rbac">RBAC</option>
+                            <option value="network">Network</option>
+                            <option value="cleanup">Cleanup</option>
+                        </select>
+                    </div>
+
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Impact Type</label>
+                        <select x-model="impactTypeFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All Impact Types</option>
+                            <option value="read-only">👁️ Read-Only</option>
+                            <option value="modifies-state">✏️ Modifies State</option>
+                            <option value="destructive">🚨 Destructive</option>
+                            <option value="impairment">⚡ Impairment</option>
+                            <option value="load-generation">🔥 Load Generation</option>
+                        </select>
+                    </div>
+
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">RBAC Level</label>
+                        <select x-model="rbacLevelFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All RBAC Levels</option>
+                            <option value="cluster-admin">Cluster Admin</option>
+                            <option value="namespace-admin">Namespace Admin</option>
+                            <option value="edit">Edit</option>
+                            <option value="view">View Only</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Input Validation</label>
+                        <select x-model="inputValidationFilter"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                            <option value="">All Input Types</option>
+                            <option value="positive">✅ Positive (Valid)</option>
+                            <option value="negative">❌ Negative (Invalid)</option>
+                            <option value="missing">⚠️ Missing Attributes</option>
+                            <option value="corrupt">💥 Corrupt Data</option>
+                            <option value="boundary">📊 Boundary Values</option>
+                        </select>
+                    </div>
+                </div>
+            </details>
+
+            
+            <div class="flex gap-2 justify-end">
+                <button @click="expandAll()"
+                        class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm">
+                    Expand All
+                </button>
+                <button @click="collapseAll()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm">
+                    Collapse All
+                </button>
+                <button @click="clearFilters()"
+                        class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition text-sm">
+                    Clear Filters
+                </button>
+                <button @click="resetProgress()"
+                        class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm">
+                    Reset Progress
+                </button>
+            </div>
+        </div>
+
+        
+        <div class="bg-blue-50 rounded-lg shadow-md p-6 mb-6 border-l-4 border-blue-500">
+            <h2 class="text-2xl font-bold text-blue-900 mb-4">📚 Learning Objectives</h2>
+            <ul class="space-y-2">
+                
+                <li class="flex items-start">
+                    <svg class="w-6 h-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700">Understand how CAMO dynamically configures Alertmanager based on secrets and configmaps</span>
+                </li>
+                
+                <li class="flex items-start">
+                    <svg class="w-6 h-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700">Learn the relationship between secrets (PagerDuty, GoAlert, DMS) and Alertmanager routing</span>
+                </li>
+                
+                <li class="flex items-start">
+                    <svg class="w-6 h-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700">Master troubleshooting techniques for Alertmanager configuration issues</span>
+                </li>
+                
+                <li class="flex items-start">
+                    <svg class="w-6 h-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700">Validate metrics and alerts exposed by CAMO</span>
+                </li>
+                
+                <li class="flex items-start">
+                    <svg class="w-6 h-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700">Practice safe testing with backup/cleanup patterns for state-modifying operations</span>
+                </li>
+                
+            </ul>
+        </div>
+
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🔧 Prerequisites</h2>
+
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">Required Knowledge</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    
+                    <div class="border rounded-lg p-4 bg-white">
+                        <div class="font-semibold text-gray-800">OpenShift/Kubernetes basics</div>
+                        <div class="text-sm text-gray-600 mt-1">
+                            <span class="px-2 py-1 rounded bg-yellow-100 text-yellow-800">
+                                intermediate
+                            </span>
+                        </div>
+                        
+                        <div class="mt-2 space-y-1">
+                            
+                            <a href="https://docs.openshift.com/container-platform/latest/welcome/index.html" target="_blank" class="text-xs text-blue-600 hover:underline block">📖 Resource</a>
+                            
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="border rounded-lg p-4 bg-white">
+                        <div class="font-semibold text-gray-800">Prometheus Alertmanager configuration</div>
+                        <div class="text-sm text-gray-600 mt-1">
+                            <span class="px-2 py-1 rounded bg-green-100 text-green-800">
+                                beginner
+                            </span>
+                        </div>
+                        
+                        <div class="mt-2 space-y-1">
+                            
+                            <a href="https://prometheus.io/docs/alerting/latest/configuration/" target="_blank" class="text-xs text-blue-600 hover:underline block">📖 Resource</a>
+                            
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="border rounded-lg p-4 bg-white">
+                        <div class="font-semibold text-gray-800">Kubernetes Operators</div>
+                        <div class="text-sm text-gray-600 mt-1">
+                            <span class="px-2 py-1 rounded bg-green-100 text-green-800">
+                                beginner
+                            </span>
+                        </div>
+                        
+                        <div class="mt-2 space-y-1">
+                            
+                            <a href="https://kubernetes.io/docs/concepts/extend-kubernetes/operator/" target="_blank" class="text-xs text-blue-600 hover:underline block">📖 Resource</a>
+                            
+                        </div>
+                        
+                    </div>
+                    
+                </div>
+            </div>
+
+            
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">Required Access</h3>
+                <div class="space-y-3">
+                    
+                    <div class="border-l-4 border-blue-500 bg-blue-50 p-4 rounded">
+                        <div class="font-semibold text-gray-800">OpenShift Cluster Admin Access</div>
+                        <div class="text-sm text-gray-600 mt-1">Required to create/modify secrets and configmaps in openshift-monitoring namespace</div>
+                        <div class="mt-2 text-sm">
+                            <span class="font-medium text-gray-700">How to get:</span>
+                            <span class="text-gray-600">Request cluster-admin role from cluster administrator</span>
+                        </div>
+                        <div class="mt-2">
+                            <code class="text-xs bg-gray-800 text-green-400 px-3 py-1 rounded">oc auth can-i create secrets -n openshift-monitoring</code>
+                        </div>
+                    </div>
+                    
+                    <div class="border-l-4 border-blue-500 bg-blue-50 p-4 rounded">
+                        <div class="font-semibold text-gray-800">Cluster Monitoring Access</div>
+                        <div class="text-sm text-gray-600 mt-1">View Prometheus metrics and Alertmanager configuration</div>
+                        <div class="mt-2 text-sm">
+                            <span class="font-medium text-gray-700">How to get:</span>
+                            <span class="text-gray-600">cluster-monitoring-view role or higher</span>
+                        </div>
+                        <div class="mt-2">
+                            <code class="text-xs bg-gray-800 text-green-400 px-3 py-1 rounded">oc auth can-i get prometheuses -n openshift-monitoring</code>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+
+        
+        <div class="space-y-6">
+            
+            
+                
+                <div class="test-card bg-white rounded-lg shadow-md overflow-hidden border-2 transition-all"
+                     :class="getTestCardClass('test_verify_camo_deployment')"
+                     x-show="filterTest({&#34;metadata&#34;:{&#34;id&#34;:&#34;test_verify_camo_deployment&#34;,&#34;name&#34;:&#34;test_verify_camo_deployment&#34;,&#34;title&#34;:&#34;Verify CAMO Operator Deployment&#34;,&#34;category&#34;:&#34;deployment&#34;,&#34;difficulty&#34;:&#34;beginner&#34;,&#34;estimated_time&#34;:&#34;10 minutes&#34;,&#34;hands_on_percentage&#34;:80,&#34;system_impact&#34;:{&#34;type&#34;:&#34;read-only&#34;,&#34;description&#34;:&#34;Only queries cluster resources to verify CAMO deployment status&#34;,&#34;affected_resources&#34;:[],&#34;reversible&#34;:true,&#34;persistence&#34;:&#34;temporary&#34;,&#34;risk_level&#34;:&#34;low&#34;},&#34;state_management&#34;:{&#34;requires_backup&#34;:false,&#34;requires_cleanup&#34;:false,&#34;restores_state&#34;:false},&#34;safety&#34;:{&#34;can_run_in_production&#34;:true,&#34;requires_confirmation&#34;:false,&#34;safe_to_retry&#34;:true,&#34;idempotent&#34;:true}},&#34;learning&#34;:{&#34;objectives&#34;:[&#34;Verify CAMO operator is deployed and running&#34;,&#34;Check CSV (ClusterServiceVersion) status&#34;,&#34;Understand operator deployment patterns in OpenShift&#34;],&#34;concepts_covered&#34;:[&#34;camo_operator&#34;],&#34;skills_gained&#34;:[&#34;Check operator deployment status using oc commands&#34;,&#34;Verify ClusterServiceVersion (CSV) managed by OLM&#34;,&#34;Understand operator lifecycle management&#34;],&#34;common_beginner_mistakes&#34;:null},&#34;test_execution&#34;:{&#34;objective&#34;:&#34;Validate that CAMO operator is installed, running, and managed by OLM&#34;,&#34;duration&#34;:&#34;10 minutes&#34;,&#34;dependencies&#34;:[],&#34;prerequisites&#34;:[&#34;Access to openshift-monitoring namespace&#34;,&#34;cluster-monitoring-view role or higher&#34;],&#34;steps&#34;:[{&#34;step_number&#34;:1,&#34;title&#34;:&#34;Verify CAMO deployment exists and is available&#34;,&#34;learning_note&#34;:&#34;Deployments manage the operator pod. An available deployment means the operator is running.&#34;,&#34;command&#34;:&#34;oc get deployment configure-alertmanager-operator -n openshift-monitoring&#34;,&#34;expected_output&#34;:&#34;configure-alertmanager-operator   1/1     1            1&#34;,&#34;why_this_step&#34;:&#34;Confirms the operator deployment exists and has the desired number of replicas running&#34;,&#34;common_errors&#34;:[{&#34;error&#34;:&#34;Error from server (NotFound): deployments.apps \&#34;configure-alertmanager-operator\&#34; not found&#34;,&#34;solution&#34;:&#34;CAMO operator is not installed. Check if OLM has installed the operator or install manually.&#34;,&#34;learn_more&#34;:&#34;https://docs.openshift.com/container-platform/latest/operators/understanding/olm/olm-understanding-olm.html&#34;}]},{&#34;step_number&#34;:2,&#34;title&#34;:&#34;Check CAMO pod is running&#34;,&#34;learning_note&#34;:&#34;The actual operator process runs inside a pod. Pod should be in Running state with no restarts.&#34;,&#34;command&#34;:&#34;oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator&#34;,&#34;expected_output&#34;:&#34;configure-alertmanager-operator-.*   1/1     Running&#34;,&#34;why_this_step&#34;:&#34;Verifies the operator pod is healthy and not crash-looping&#34;,&#34;common_errors&#34;:[{&#34;error&#34;:&#34;Pod status shows CrashLoopBackOff&#34;,&#34;solution&#34;:&#34;Check pod logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator&#34;,&#34;learn_more&#34;:&#34;&#34;}]},{&#34;step_number&#34;:3,&#34;title&#34;:&#34;Verify ClusterServiceVersion (CSV) exists and succeeded&#34;,&#34;learning_note&#34;:&#34;CSV is how OLM tracks operator installation. Succeeded status means OLM successfully installed and is managing the operator.&#34;,&#34;command&#34;:&#34;oc get csv -n openshift-monitoring -l operators.coreos.com/configure-alertmanager-operator.openshift-monitoring&#34;,&#34;expected_output&#34;:&#34;configure-alertmanager-operator.*   Succeeded&#34;,&#34;why_this_step&#34;:&#34;Confirms OLM has successfully installed and is managing the CAMO operator&#34;}],&#34;child_tests&#34;:null,&#34;validation&#34;:{&#34;success_criteria&#34;:[&#34;Deployment shows 1/1 available replicas&#34;,&#34;Pod is in Running state with 1/1 containers ready&#34;,&#34;CSV phase is &#39;Succeeded&#39;&#34;],&#34;how_to_verify&#34;:&#34;Run: oc get deployment,pod,csv -n openshift-monitoring -l name=configure-alertmanager-operator&#34;,&#34;what_success_means&#34;:&#34;CAMO operator is installed, running, and being managed by OLM correctly&#34;,&#34;what_failure_means&#34;:&#34;Operator is not installed, not running, or OLM is not managing it properly. Check OLM logs and CSV status.&#34;}},&#34;troubleshooting&#34;:{&#34;common_failures&#34;:[{&#34;symptom&#34;:&#34;Deployment exists but pod keeps restarting&#34;,&#34;cause&#34;:&#34;Operator failing to start, likely due to RBAC issues or invalid configuration&#34;,&#34;debug_steps&#34;:[&#34;Check pod logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator&#34;,&#34;Check for RBAC errors in logs&#34;,&#34;Verify ServiceAccount exists: oc get sa configure-alertmanager-operator -n openshift-monitoring&#34;],&#34;fix&#34;:&#34;Review logs for specific error, check RBAC permissions&#34;,&#34;prevention&#34;:&#34;Ensure OLM has properly installed all RBAC resources&#34;}],&#34;getting_help&#34;:[&#34;Check operator logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator&#34;,&#34;Check OLM logs: oc logs -n openshift-operator-lifecycle-manager deployment/olm-operator&#34;,&#34;Review CSV status: oc describe csv -n openshift-monitoring&#34;]},&#34;next_steps&#34;:{&#34;on_success&#34;:&#34;Proceed to test_verify_rbac to validate operator permissions&#34;,&#34;bonus_exploration&#34;:[&#34;Explore CSV details: oc get csv -n openshift-monitoring -o yaml&#34;,&#34;Check operator version: oc get deployment configure-alertmanager-operator -n openshift-monitoring -o jsonpath=&#39;{.spec.template.spec.containers[0].image}&#39;&#34;]},&#34;references&#34;:{&#34;documentation&#34;:[&#34;https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md&#34;],&#34;related_code&#34;:[&#34;https://github.com/openshift/configure-alertmanager-operator/blob/master/main.go&#34;],&#34;sops&#34;:[]}})"
+                     x-cloak>
+
+                    
+                    <div class="p-6 cursor-pointer hover:bg-gray-50 transition"
+                         @click="toggleTest('test_verify_camo_deployment')">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <span class="text-3xl">1</span>
+                                    <h3 class="text-2xl font-bold text-gray-800">Verify CAMO Operator Deployment</h3>
+                                </div>
+                                <p class="text-gray-600 mt-2">Validate that CAMO operator is installed, running, and managed by OLM</p>
+
+                                <div class="flex items-center gap-4 mt-4 text-sm flex-wrap">
+                                    <span class="difficulty-badge difficulty-beginner">
+                                        beginner
+                                    </span>
+                                    <span class="text-gray-600">⏱️ 10 minutes</span>
+                                    <span class="text-gray-600">🎯 80% hands-on</span>
+                                    
+
+                                    
+                                    
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                        👁️ Read-Only
+                                    </span>
+                                    
+
+                                    
+                                    
+                                </div>
+                            </div>
+
+                            
+                            <div class="flex items-center gap-4 ml-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isTestCompleted('test_verify_camo_deployment')"
+                                           @change="toggleTestCompletion('test_verify_camo_deployment')"
+                                           @click.stop
+                                           class="w-6 h-6 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm font-medium text-gray-700">Complete</span>
+                                </label>
+
+                                <svg class="w-6 h-6 text-gray-400 transition-transform"
+                                     :class="{'rotate-180': expandedTests.includes('test_verify_camo_deployment')}">
+                                    <path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    
+                    <div x-show="expandedTests.includes('test_verify_camo_deployment')"
+                         x-collapse
+                         class="border-t border-gray-200">
+
+                        
+                        
+                        
+                        <div class="p-4 bg-green-50 border-b border-green-100">
+                            <div class="flex items-center text-sm">
+                                <svg class="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-semibold text-green-800">Safe to run - This test is read-only and makes no changes to the system</span>
+                            </div>
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-green-50 border-b border-green-100">
+                            <h4 class="font-bold text-green-900 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"/>
+                                </svg>
+                                What You'll Learn
+                            </h4>
+                            <ul class="space-y-2">
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Verify CAMO operator is deployed and running</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Check CSV (ClusterServiceVersion) status</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Understand operator deployment patterns in OpenShift</span>
+                                </li>
+                                
+                            </ul>
+
+                            
+                        </div>
+
+                        
+                        
+
+                        
+                        
+                        <div class="p-6">
+                            <h4 class="font-bold text-gray-900 mb-4 text-lg">📝 Steps</h4>
+
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    1
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify CAMO deployment exists and is available</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Deployments manage the operator pod. An available deployment means the operator is running.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get deployment configure-alertmanager-operator -n openshift-monitoring&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get deployment configure-alertmanager-operator -n openshift-monitoring</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">configure-alertmanager-operator   1/1     1            1</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms the operator deployment exists and has the desired number of replicas running
+                                </div>
+                                
+
+                                
+                                
+                                <div class="mt-3 space-y-2">
+                                    
+                                    <details class="bg-red-50 border border-red-200 rounded p-3">
+                                        <summary class="cursor-pointer font-medium text-red-800 text-sm">
+                                            🚨 Error: Error from server (NotFound): deployments.apps &#34;configure-alertmanager-operator&#34; not found
+                                        </summary>
+                                        <div class="mt-2 text-sm text-red-700 space-y-1">
+                                            <div><span class="font-semibold">Solution:</span> CAMO operator is not installed. Check if OLM has installed the operator or install manually.</div>
+                                            
+                                            <div><span class="font-semibold">Learn more:</span> https://docs.openshift.com/container-platform/latest/operators/understanding/olm/olm-understanding-olm.html</div>
+                                            
+                                        </div>
+                                    </details>
+                                    
+                                </div>
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_verify_camo_deployment', 1)"
+                                           @change="toggleStepCompletion('test_verify_camo_deployment', 1)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    2
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Check CAMO pod is running</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        The actual operator process runs inside a pod. Pod should be in Running state with no restarts.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">configure-alertmanager-operator-.*   1/1     Running</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Verifies the operator pod is healthy and not crash-looping
+                                </div>
+                                
+
+                                
+                                
+                                <div class="mt-3 space-y-2">
+                                    
+                                    <details class="bg-red-50 border border-red-200 rounded p-3">
+                                        <summary class="cursor-pointer font-medium text-red-800 text-sm">
+                                            🚨 Error: Pod status shows CrashLoopBackOff
+                                        </summary>
+                                        <div class="mt-2 text-sm text-red-700 space-y-1">
+                                            <div><span class="font-semibold">Solution:</span> Check pod logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator</div>
+                                            
+                                        </div>
+                                    </details>
+                                    
+                                </div>
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_verify_camo_deployment', 2)"
+                                           @change="toggleStepCompletion('test_verify_camo_deployment', 2)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    3
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify ClusterServiceVersion (CSV) exists and succeeded</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        CSV is how OLM tracks operator installation. Succeeded status means OLM successfully installed and is managing the operator.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get csv -n openshift-monitoring -l operators.coreos.com/configure-alertmanager-operator.openshift-monitoring&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get csv -n openshift-monitoring -l operators.coreos.com/configure-alertmanager-operator.openshift-monitoring</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">configure-alertmanager-operator.*   Succeeded</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms OLM has successfully installed and is managing the CAMO operator
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_verify_camo_deployment', 3)"
+                                           @change="toggleStepCompletion('test_verify_camo_deployment', 3)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-purple-50 border-t border-purple-100">
+                            <h4 class="font-bold text-purple-900 mb-3">✅ Validation</h4>
+                            <div class="space-y-3 text-sm">
+                                <div>
+                                    <span class="font-semibold text-purple-800">Success Criteria:</span>
+                                    <ul class="mt-2 space-y-1">
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>Deployment shows 1/1 available replicas</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>Pod is in Running state with 1/1 containers ready</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>CSV phase is &#39;Succeeded&#39;</span>
+                                        </li>
+                                        
+                                    </ul>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What success means:</span>
+                                    <p class="text-purple-700 mt-1">CAMO operator is installed, running, and being managed by OLM correctly</p>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What failure means:</span>
+                                    <p class="text-purple-700 mt-1">Operator is not installed, not running, or OLM is not managing it properly. Check OLM logs and CSV status.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        
+                        
+                        <div class="p-6 bg-red-50 border-t border-red-100">
+                            <h4 class="font-bold text-red-900 mb-3">🔧 Troubleshooting</h4>
+                            <div class="space-y-4">
+                                
+                                <details class="bg-white border border-red-200 rounded-lg p-4">
+                                    <summary class="cursor-pointer font-semibold text-red-800">
+                                        Deployment exists but pod keeps restarting
+                                    </summary>
+                                    <div class="mt-3 space-y-2 text-sm">
+                                        <div><span class="font-semibold">Likely cause:</span> Operator failing to start, likely due to RBAC issues or invalid configuration</div>
+                                        <div>
+                                            <span class="font-semibold">Debug steps:</span>
+                                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1">
+                                                
+                                                <li class="text-gray-700">Check pod logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator</li>
+                                                
+                                                <li class="text-gray-700">Check for RBAC errors in logs</li>
+                                                
+                                                <li class="text-gray-700">Verify ServiceAccount exists: oc get sa configure-alertmanager-operator -n openshift-monitoring</li>
+                                                
+                                            </ol>
+                                        </div>
+                                        <div><span class="font-semibold">Fix:</span> Review logs for specific error, check RBAC permissions</div>
+                                        <div><span class="font-semibold">Prevention:</span> Ensure OLM has properly installed all RBAC resources</div>
+                                        
+                                    </div>
+                                </details>
+                                
+                            </div>
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-gray-50 border-t border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-3">🎯 Next Steps</h4>
+                            <div class="text-sm text-gray-700 mb-4">Proceed to test_verify_rbac to validate operator permissions</div>
+
+                            
+                            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                                <h5 class="font-semibold text-gray-800 mb-2">🌟 Bonus Exploration</h5>
+                                <ul class="space-y-1">
+                                    
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>Explore CSV details: oc get csv -n openshift-monitoring -o yaml</span>
+                                    </li>
+                                    
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>Check operator version: oc get deployment configure-alertmanager-operator -n openshift-monitoring -o jsonpath=&#39;{.spec.template.spec.containers[0].image}&#39;</span>
+                                    </li>
+                                    
+                                </ul>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+            
+                
+                <div class="test-card bg-white rounded-lg shadow-md overflow-hidden border-2 transition-all"
+                     :class="getTestCardClass('test_read_alertmanager_config')"
+                     x-show="filterTest({&#34;metadata&#34;:{&#34;id&#34;:&#34;test_read_alertmanager_config&#34;,&#34;name&#34;:&#34;test_read_alertmanager_config&#34;,&#34;title&#34;:&#34;Read and Inspect Alertmanager Configuration&#34;,&#34;category&#34;:&#34;configuration&#34;,&#34;difficulty&#34;:&#34;beginner&#34;,&#34;estimated_time&#34;:&#34;15 minutes&#34;,&#34;hands_on_percentage&#34;:70,&#34;system_impact&#34;:{&#34;type&#34;:&#34;read-only&#34;,&#34;description&#34;:&#34;Reads alertmanager-main secret and displays configuration - makes no changes&#34;,&#34;affected_resources&#34;:[],&#34;reversible&#34;:true,&#34;persistence&#34;:&#34;temporary&#34;,&#34;risk_level&#34;:&#34;low&#34;},&#34;state_management&#34;:{&#34;requires_backup&#34;:false,&#34;requires_cleanup&#34;:false,&#34;restores_state&#34;:false},&#34;safety&#34;:{&#34;can_run_in_production&#34;:true,&#34;requires_confirmation&#34;:false,&#34;safe_to_retry&#34;:true,&#34;idempotent&#34;:true}},&#34;learning&#34;:{&#34;objectives&#34;:[&#34;Understand how Alertmanager configuration is stored in Kubernetes&#34;,&#34;Learn to extract and read YAML from secrets&#34;,&#34;Identify receivers and routes in Alertmanager config&#34;],&#34;concepts_covered&#34;:[&#34;alertmanager_config&#34;],&#34;skills_gained&#34;:[&#34;Extract and decode base64-encoded secret data&#34;,&#34;Parse YAML configuration&#34;,&#34;Understand Alertmanager routing structure&#34;],&#34;common_beginner_mistakes&#34;:null},&#34;test_execution&#34;:{&#34;objective&#34;:&#34;Read and inspect the current Alertmanager configuration managed by CAMO&#34;,&#34;duration&#34;:&#34;15 minutes&#34;,&#34;dependencies&#34;:[],&#34;prerequisites&#34;:[&#34;Access to openshift-monitoring namespace&#34;],&#34;steps&#34;:[{&#34;step_number&#34;:1,&#34;title&#34;:&#34;Verify alertmanager-main secret exists&#34;,&#34;learning_note&#34;:&#34;Alertmanager configuration is stored in a Secret, not a ConfigMap. This allows Prometheus Operator to reload Alertmanager when config changes.&#34;,&#34;command&#34;:&#34;oc get secret alertmanager-main -n openshift-monitoring&#34;,&#34;expected_output&#34;:&#34;alertmanager-main   Opaque   1&#34;,&#34;why_this_step&#34;:&#34;Confirms the secret exists before attempting to read it&#34;},{&#34;step_number&#34;:2,&#34;title&#34;:&#34;Extract and display alertmanager.yaml from secret&#34;,&#34;learning_note&#34;:&#34;Secrets store data base64-encoded. The -o jsonpath extracts the alertmanager.yaml key and base64 decodes it.&#34;,&#34;command&#34;:&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d&#34;,&#34;expected_output&#34;:&#34;global:\\n  resolve_timeout:&#34;,&#34;why_this_step&#34;:&#34;Retrieves the actual Alertmanager YAML configuration&#34;,&#34;documentation_reference&#34;:&#34;https://prometheus.io/docs/alerting/latest/configuration/&#34;},{&#34;step_number&#34;:3,&#34;title&#34;:&#34;List all receivers in the configuration&#34;,&#34;learning_note&#34;:&#34;Receivers define WHERE alerts are sent (PagerDuty, GoAlert, DMS, etc.). CAMO dynamically adds/removes receivers based on secrets.&#34;,&#34;command&#34;:&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[].name&#39; -&#34;,&#34;expected_output&#34;:&#34;null\npagerduty\ngoalert\ndms&#34;,&#34;why_this_step&#34;:&#34;Shows which alert destinations are currently configured&#34;},{&#34;step_number&#34;:4,&#34;title&#34;:&#34;Check if PagerDuty receiver exists&#34;,&#34;learning_note&#34;:&#34;If pd-secret exists, CAMO should have created a &#39;pagerduty&#39; receiver. This command checks if it&#39;s present.&#34;,&#34;command&#34;:&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == \&#34;pagerduty\&#34;)&#39; -&#34;,&#34;expected_output&#34;:&#34;name: pagerduty&#34;,&#34;why_this_step&#34;:&#34;Validates that CAMO configured PagerDuty routing if pd-secret exists&#34;}],&#34;child_tests&#34;:null,&#34;validation&#34;:{&#34;success_criteria&#34;:[&#34;alertmanager-main secret exists&#34;,&#34;alertmanager.yaml key is present and decodable&#34;,&#34;Configuration contains valid YAML&#34;,&#34;At minimum, &#39;null&#39; receiver exists (default catch-all)&#34;],&#34;how_to_verify&#34;:&#34;Extract config and validate with yq: oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval . -&#34;,&#34;what_success_means&#34;:&#34;Alertmanager configuration is present and readable&#34;,&#34;what_failure_means&#34;:&#34;Secret is missing or corrupted. CAMO may not have reconciled yet or encountered errors.&#34;}},&#34;troubleshooting&#34;:{&#34;common_failures&#34;:[],&#34;getting_help&#34;:[&#34;Check CAMO logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator&#34;,&#34;Verify secret was created: oc describe secret alertmanager-main -n openshift-monitoring&#34;]},&#34;next_steps&#34;:{&#34;on_success&#34;:&#34;Proceed to test_create_pagerduty_secret to test dynamic configuration&#34;,&#34;bonus_exploration&#34;:[&#34;Examine full config structure with yq&#34;,&#34;Compare receivers section before and after creating secrets&#34;]},&#34;references&#34;:{&#34;documentation&#34;:[&#34;https://prometheus.io/docs/alerting/latest/configuration/&#34;,&#34;https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md&#34;],&#34;related_code&#34;:[],&#34;sops&#34;:[]}})"
+                     x-cloak>
+
+                    
+                    <div class="p-6 cursor-pointer hover:bg-gray-50 transition"
+                         @click="toggleTest('test_read_alertmanager_config')">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <span class="text-3xl">2</span>
+                                    <h3 class="text-2xl font-bold text-gray-800">Read and Inspect Alertmanager Configuration</h3>
+                                </div>
+                                <p class="text-gray-600 mt-2">Read and inspect the current Alertmanager configuration managed by CAMO</p>
+
+                                <div class="flex items-center gap-4 mt-4 text-sm flex-wrap">
+                                    <span class="difficulty-badge difficulty-beginner">
+                                        beginner
+                                    </span>
+                                    <span class="text-gray-600">⏱️ 15 minutes</span>
+                                    <span class="text-gray-600">🎯 70% hands-on</span>
+                                    
+
+                                    
+                                    
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                        👁️ Read-Only
+                                    </span>
+                                    
+
+                                    
+                                    
+                                </div>
+                            </div>
+
+                            
+                            <div class="flex items-center gap-4 ml-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isTestCompleted('test_read_alertmanager_config')"
+                                           @change="toggleTestCompletion('test_read_alertmanager_config')"
+                                           @click.stop
+                                           class="w-6 h-6 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm font-medium text-gray-700">Complete</span>
+                                </label>
+
+                                <svg class="w-6 h-6 text-gray-400 transition-transform"
+                                     :class="{'rotate-180': expandedTests.includes('test_read_alertmanager_config')}">
+                                    <path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    
+                    <div x-show="expandedTests.includes('test_read_alertmanager_config')"
+                         x-collapse
+                         class="border-t border-gray-200">
+
+                        
+                        
+                        
+                        <div class="p-4 bg-green-50 border-b border-green-100">
+                            <div class="flex items-center text-sm">
+                                <svg class="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-semibold text-green-800">Safe to run - This test is read-only and makes no changes to the system</span>
+                            </div>
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-green-50 border-b border-green-100">
+                            <h4 class="font-bold text-green-900 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"/>
+                                </svg>
+                                What You'll Learn
+                            </h4>
+                            <ul class="space-y-2">
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Understand how Alertmanager configuration is stored in Kubernetes</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Learn to extract and read YAML from secrets</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Identify receivers and routes in Alertmanager config</span>
+                                </li>
+                                
+                            </ul>
+
+                            
+                        </div>
+
+                        
+                        
+
+                        
+                        
+                        <div class="p-6">
+                            <h4 class="font-bold text-gray-900 mb-4 text-lg">📝 Steps</h4>
+
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    1
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify alertmanager-main secret exists</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Alertmanager configuration is stored in a Secret, not a ConfigMap. This allows Prometheus Operator to reload Alertmanager when config changes.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret alertmanager-main -n openshift-monitoring&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret alertmanager-main -n openshift-monitoring</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">alertmanager-main   Opaque   1</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms the secret exists before attempting to read it
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_read_alertmanager_config', 1)"
+                                           @change="toggleStepCompletion('test_read_alertmanager_config', 1)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    2
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Extract and display alertmanager.yaml from secret</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Secrets store data base64-encoded. The -o jsonpath extracts the alertmanager.yaml key and base64 decodes it.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\.yaml}&#39; | base64 -d</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-blue-600 mb-2">
+                                    <a href="https://prometheus.io/docs/alerting/latest/configuration/" target="_blank" class="hover:underline flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path>
+                                            <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"></path>
+                                        </svg>
+                                        Documentation Reference
+                                    </a>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">global:\n  resolve_timeout:</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Retrieves the actual Alertmanager YAML configuration
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_read_alertmanager_config', 2)"
+                                           @change="toggleStepCompletion('test_read_alertmanager_config', 2)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    3
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">List all receivers in the configuration</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Receivers define WHERE alerts are sent (PagerDuty, GoAlert, DMS, etc.). CAMO dynamically adds/removes receivers based on secrets.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[].name&#39; -&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[].name&#39; -</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">null
+pagerduty
+goalert
+dms</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Shows which alert destinations are currently configured
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_read_alertmanager_config', 3)"
+                                           @change="toggleStepCompletion('test_read_alertmanager_config', 3)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    4
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Check if PagerDuty receiver exists</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        If pd-secret exists, CAMO should have created a &#39;pagerduty&#39; receiver. This command checks if it&#39;s present.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == \&#34;pagerduty\&#34;)&#39; -&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == &#34;pagerduty&#34;)&#39; -</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">name: pagerduty</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Validates that CAMO configured PagerDuty routing if pd-secret exists
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_read_alertmanager_config', 4)"
+                                           @change="toggleStepCompletion('test_read_alertmanager_config', 4)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-purple-50 border-t border-purple-100">
+                            <h4 class="font-bold text-purple-900 mb-3">✅ Validation</h4>
+                            <div class="space-y-3 text-sm">
+                                <div>
+                                    <span class="font-semibold text-purple-800">Success Criteria:</span>
+                                    <ul class="mt-2 space-y-1">
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>alertmanager-main secret exists</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>alertmanager.yaml key is present and decodable</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>Configuration contains valid YAML</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>At minimum, &#39;null&#39; receiver exists (default catch-all)</span>
+                                        </li>
+                                        
+                                    </ul>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What success means:</span>
+                                    <p class="text-purple-700 mt-1">Alertmanager configuration is present and readable</p>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What failure means:</span>
+                                    <p class="text-purple-700 mt-1">Secret is missing or corrupted. CAMO may not have reconciled yet or encountered errors.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        
+                        
+
+                        
+                        <div class="p-6 bg-gray-50 border-t border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-3">🎯 Next Steps</h4>
+                            <div class="text-sm text-gray-700 mb-4">Proceed to test_create_pagerduty_secret to test dynamic configuration</div>
+
+                            
+                            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                                <h5 class="font-semibold text-gray-800 mb-2">🌟 Bonus Exploration</h5>
+                                <ul class="space-y-1">
+                                    
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>Examine full config structure with yq</span>
+                                    </li>
+                                    
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>Compare receivers section before and after creating secrets</span>
+                                    </li>
+                                    
+                                </ul>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+            
+                
+                <div class="test-card bg-white rounded-lg shadow-md overflow-hidden border-2 transition-all"
+                     :class="getTestCardClass('test_create_pagerduty_secret')"
+                     x-show="filterTest({&#34;metadata&#34;:{&#34;id&#34;:&#34;test_create_pagerduty_secret&#34;,&#34;name&#34;:&#34;test_create_pagerduty_secret&#34;,&#34;title&#34;:&#34;Create PagerDuty Secret for Alert Routing&#34;,&#34;category&#34;:&#34;configuration&#34;,&#34;difficulty&#34;:&#34;intermediate&#34;,&#34;estimated_time&#34;:&#34;20 minutes&#34;,&#34;hands_on_percentage&#34;:75,&#34;system_impact&#34;:{&#34;type&#34;:&#34;modifies-state&#34;,&#34;description&#34;:&#34;Creates pd-secret in openshift-monitoring namespace, which triggers CAMO to reconfigure Alertmanager&#34;,&#34;affected_resources&#34;:[&#34;Secret: pd-secret in openshift-monitoring&#34;,&#34;Secret: alertmanager-main (modified by CAMO)&#34;],&#34;reversible&#34;:true,&#34;persistence&#34;:&#34;permanent&#34;,&#34;risk_level&#34;:&#34;medium&#34;},&#34;state_management&#34;:{&#34;requires_backup&#34;:false,&#34;requires_cleanup&#34;:true,&#34;cleanup_test&#34;:&#34;test_cleanup_pagerduty_secret&#34;,&#34;restores_state&#34;:false},&#34;safety&#34;:{&#34;can_run_in_production&#34;:false,&#34;requires_confirmation&#34;:true,&#34;warning_message&#34;:&#34;⚠️ This test creates a PagerDuty secret that will cause CAMO to reconfigure Alertmanager. Alerts may start routing to the test PagerDuty key. Run cleanup test afterward to remove.&#34;,&#34;safe_to_retry&#34;:true,&#34;idempotent&#34;:true}},&#34;learning&#34;:{&#34;objectives&#34;:[&#34;Understand how CAMO watches secrets to trigger reconciliation&#34;,&#34;Learn the structure of pd-secret and required keys&#34;,&#34;Observe automatic Alertmanager reconfiguration when secret is created&#34;],&#34;concepts_covered&#34;:[&#34;pagerduty_integration&#34;,&#34;camo_operator&#34;],&#34;skills_gained&#34;:[&#34;Create secrets with specific keys using oc create secret&#34;,&#34;Trigger operator reconciliation by creating watched resources&#34;,&#34;Verify operator reactions to resource changes&#34;],&#34;common_beginner_mistakes&#34;:null},&#34;test_execution&#34;:{&#34;objective&#34;:&#34;Create pd-secret and verify CAMO automatically adds PagerDuty receiver to Alertmanager configuration&#34;,&#34;duration&#34;:&#34;20 minutes&#34;,&#34;dependencies&#34;:[&#34;test_read_alertmanager_config&#34;],&#34;prerequisites&#34;:[&#34;cluster-admin or ability to create secrets in openshift-monitoring&#34;,&#34;Test PagerDuty integration key (use TEST_KEY_CHANGEME for testing)&#34;],&#34;steps&#34;:[{&#34;step_number&#34;:1,&#34;title&#34;:&#34;Verify pd-secret does NOT exist (clean state)&#34;,&#34;learning_note&#34;:&#34;Before creating a secret, verify it doesn&#39;t already exist to ensure we&#39;re testing CAMO&#39;s create behavior.&#34;,&#34;command&#34;:&#34;oc get secret pd-secret -n openshift-monitoring 2\u003e\u00261&#34;,&#34;expected_output&#34;:&#34;Error from server (NotFound)&#34;,&#34;why_this_step&#34;:&#34;Ensures clean starting state - if secret exists, delete it first or skip this test&#34;},{&#34;step_number&#34;:2,&#34;title&#34;:&#34;Create pd-secret with test PagerDuty key&#34;,&#34;learning_note&#34;:&#34;CAMO looks for a secret named &#39;pd-secret&#39; with key &#39;PAGERDUTY_KEY&#39;. When created, CAMO&#39;s watch triggers reconciliation.&#34;,&#34;command&#34;:&#34;oc create secret generic pd-secret --from-literal=PAGERDUTY_KEY=TEST_KEY_CHANGEME -n openshift-monitoring&#34;,&#34;expected_output&#34;:&#34;secret/pd-secret created&#34;,&#34;why_this_step&#34;:&#34;Creates the secret that CAMO watches, triggering automatic Alertmanager reconfiguration&#34;,&#34;common_errors&#34;:[{&#34;error&#34;:&#34;Error from server (AlreadyExists): secrets \&#34;pd-secret\&#34; already exists&#34;,&#34;solution&#34;:&#34;Secret already exists. Delete it first: oc delete secret pd-secret -n openshift-monitoring, or use --dry-run=client to test the command&#34;,&#34;learn_more&#34;:&#34;&#34;},{&#34;error&#34;:&#34;Error from server (Forbidden): secrets is forbidden&#34;,&#34;solution&#34;:&#34;You lack permissions to create secrets in openshift-monitoring. Request cluster-admin role.&#34;,&#34;learn_more&#34;:&#34;&#34;}]},{&#34;step_number&#34;:3,&#34;title&#34;:&#34;Wait for CAMO to reconcile (30-60 seconds)&#34;,&#34;learning_note&#34;:&#34;Operator watches are eventually consistent. CAMO needs time to detect the new secret, reconcile, and update alertmanager-main.&#34;,&#34;command&#34;:&#34;sleep 60 \u0026\u0026 echo &#39;Reconciliation period complete&#39;&#34;,&#34;expected_output&#34;:&#34;Reconciliation period complete&#34;,&#34;why_this_step&#34;:&#34;Gives CAMO time to detect the secret and update Alertmanager configuration&#34;},{&#34;step_number&#34;:4,&#34;title&#34;:&#34;Verify CAMO added PagerDuty receiver to Alertmanager config&#34;,&#34;learning_note&#34;:&#34;After reconciliation, alertmanager-main secret should now contain a &#39;pagerduty&#39; receiver configured with the routing key from pd-secret.&#34;,&#34;command&#34;:&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == \&#34;pagerduty\&#34;)&#39; -&#34;,&#34;expected_output&#34;:&#34;name: pagerduty&#34;,&#34;why_this_step&#34;:&#34;Confirms CAMO successfully added PagerDuty receiver to Alertmanager configuration&#34;},{&#34;step_number&#34;:5,&#34;title&#34;:&#34;Check pd_secret_exists metric is 1&#34;,&#34;learning_note&#34;:&#34;CAMO exposes metrics for monitoring. pd_secret_exists should be 1 when pd-secret exists, 0 when absent.&#34;,&#34;command&#34;:&#34;oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep &#39;pd_secret_exists&#39;&#34;,&#34;expected_output&#34;:&#34;pd_secret_exists 1&#34;,&#34;why_this_step&#34;:&#34;Validates CAMO&#39;s internal state matches the actual secret presence&#34;}],&#34;child_tests&#34;:null,&#34;validation&#34;:{&#34;success_criteria&#34;:[&#34;pd-secret created successfully&#34;,&#34;Alertmanager config contains &#39;pagerduty&#39; receiver&#34;,&#34;pd_secret_exists metric shows 1&#34;,&#34;No errors in CAMO operator logs&#34;],&#34;how_to_verify&#34;:&#34;Check receiver exists: oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[].name&#39; -&#34;,&#34;what_success_means&#34;:&#34;CAMO successfully detected pd-secret and reconfigured Alertmanager to route alerts to PagerDuty&#34;,&#34;what_failure_means&#34;:&#34;CAMO failed to reconcile. Check operator logs for errors. Secret may have wrong key name or CAMO may not have RBAC permissions.&#34;}},&#34;troubleshooting&#34;:{&#34;common_failures&#34;:[{&#34;symptom&#34;:&#34;Secret created but pagerduty receiver not in config after 2 minutes&#34;,&#34;cause&#34;:&#34;CAMO reconciliation failed or operator is not running&#34;,&#34;debug_steps&#34;:[&#34;Check CAMO pod is running: oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator&#34;,&#34;Check CAMO logs for errors: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator --tail=50&#34;,&#34;Verify secret has correct key: oc get secret pd-secret -n openshift-monitoring -o jsonpath=&#39;{.data.PAGERDUTY_KEY}&#39;&#34;],&#34;fix&#34;:&#34;Review logs for specific error, ensure secret has PAGERDUTY_KEY key (not pagerduty_key or other variations)&#34;,&#34;prevention&#34;:&#34;Always check operator logs after creating secrets to confirm reconciliation succeeded&#34;}],&#34;getting_help&#34;:[&#34;Check CAMO logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator&#34;,&#34;Verify secret structure: oc get secret pd-secret -n openshift-monitoring -o yaml&#34;,&#34;Check CAMO metrics: oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics&#34;]},&#34;next_steps&#34;:{&#34;on_success&#34;:&#34;⚠️ CLEANUP REQUIRED: Run test_cleanup_pagerduty_secret to remove the test secret and restore Alertmanager config&#34;,&#34;bonus_exploration&#34;:[&#34;Examine the complete pagerduty receiver config with yq&#34;,&#34;Watch CAMO logs during reconciliation: oc logs -f -n openshift-monitoring deployment/configure-alertmanager-operator&#34;]},&#34;references&#34;:{&#34;documentation&#34;:[&#34;https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md#secret-controller&#34;],&#34;related_code&#34;:[&#34;https://github.com/openshift/configure-alertmanager-operator/blob/master/controllers/secret_controller.go&#34;],&#34;sops&#34;:[]}})"
+                     x-cloak>
+
+                    
+                    <div class="p-6 cursor-pointer hover:bg-gray-50 transition"
+                         @click="toggleTest('test_create_pagerduty_secret')">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <span class="text-3xl">3</span>
+                                    <h3 class="text-2xl font-bold text-gray-800">Create PagerDuty Secret for Alert Routing</h3>
+                                </div>
+                                <p class="text-gray-600 mt-2">Create pd-secret and verify CAMO automatically adds PagerDuty receiver to Alertmanager configuration</p>
+
+                                <div class="flex items-center gap-4 mt-4 text-sm flex-wrap">
+                                    <span class="difficulty-badge difficulty-intermediate">
+                                        intermediate
+                                    </span>
+                                    <span class="text-gray-600">⏱️ 20 minutes</span>
+                                    <span class="text-gray-600">🎯 75% hands-on</span>
+                                    
+                                    <span class="text-gray-600">⛓️ Depends on: 1 test(s)</span>
+                                    
+
+                                    
+                                    
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                        ✏️ Modifies State
+                                    </span>
+                                    
+
+                                    
+                                    
+                                </div>
+                            </div>
+
+                            
+                            <div class="flex items-center gap-4 ml-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isTestCompleted('test_create_pagerduty_secret')"
+                                           @change="toggleTestCompletion('test_create_pagerduty_secret')"
+                                           @click.stop
+                                           class="w-6 h-6 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm font-medium text-gray-700">Complete</span>
+                                </label>
+
+                                <svg class="w-6 h-6 text-gray-400 transition-transform"
+                                     :class="{'rotate-180': expandedTests.includes('test_create_pagerduty_secret')}">
+                                    <path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    
+                    <div x-show="expandedTests.includes('test_create_pagerduty_secret')"
+                         x-collapse
+                         class="border-t border-gray-200">
+
+                        
+                        
+                        <div class="p-6 bg-yellow-50 border-b border-yellow-200">
+                            <h4 class="font-bold text-yellow-900 mb-3 flex items-center">
+                                
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                </svg>
+                                ⚠️ System Impact - Modifies State
+                                
+                            </h4>
+
+                            
+                            
+                            <div class="bg-yellow-100 border border-yellow-300 rounded-lg p-4 mb-4">
+                                <p class="text-yellow-900 font-semibold">
+                                    ⚠️ This test creates a PagerDuty secret that will cause CAMO to reconfigure Alertmanager. Alerts may start routing to the test PagerDuty key. Run cleanup test afterward to remove.
+                                </p>
+                            </div>
+                            
+
+                            
+                            <div class="bg-white rounded-lg p-4 mb-4 border border-yellow-200">
+                                <div class="space-y-3 text-sm">
+                                    <div>
+                                        <span class="font-semibold text-yellow-800">Impact:</span>
+                                        <p class="text-gray-700 mt-1">Creates pd-secret in openshift-monitoring namespace, which triggers CAMO to reconfigure Alertmanager</p>
+                                    </div>
+
+                                    
+                                    <div>
+                                        <span class="font-semibold text-yellow-800">Affected Resources:</span>
+                                        <ul class="mt-1 space-y-1">
+                                            
+                                            <li class="flex items-start text-gray-700">
+                                                <span class="mr-2">•</span>
+                                                <span>Secret: pd-secret in openshift-monitoring</span>
+                                            </li>
+                                            
+                                            <li class="flex items-start text-gray-700">
+                                                <span class="mr-2">•</span>
+                                                <span>Secret: alertmanager-main (modified by CAMO)</span>
+                                            </li>
+                                            
+                                        </ul>
+                                    </div>
+                                    
+
+                                    <div class="grid grid-cols-2 gap-4 pt-2">
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Reversible:</span>
+                                            <span class="ml-2">✅ Yes</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Persistence:</span>
+                                            <span class="ml-2">permanent</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Risk Level:</span>
+                                            <span class="ml-2">medium</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Safe to Retry:</span>
+                                            <span class="ml-2">✅ Yes</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            
+                            <div class="bg-white rounded-lg p-4 border border-yellow-200">
+                                <h5 class="font-semibold text-yellow-900 mb-3">State Management</h5>
+                                <div class="space-y-2 text-sm">
+                                    
+
+                                    
+                                    <div class="flex items-start">
+                                        <span class="text-yellow-700 font-medium mr-2">🧹 Cleanup Required:</span>
+                                        <span class="text-gray-700">
+                                            Run test <code class="bg-gray-100 px-2 py-0.5 rounded">test_cleanup_pagerduty_secret</code> after completion to restore state
+                                        </span>
+                                    </div>
+                                    
+
+                                    
+
+                                    
+                                    <div class="flex items-start">
+                                        <span class="text-yellow-700 font-medium mr-2">🚫 Production:</span>
+                                        <span class="text-gray-700">This test should NOT be run in production environments</span>
+                                    </div>
+                                    
+                                </div>
+                            </div>
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-green-50 border-b border-green-100">
+                            <h4 class="font-bold text-green-900 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"/>
+                                </svg>
+                                What You'll Learn
+                            </h4>
+                            <ul class="space-y-2">
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Understand how CAMO watches secrets to trigger reconciliation</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Learn the structure of pd-secret and required keys</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Observe automatic Alertmanager reconfiguration when secret is created</span>
+                                </li>
+                                
+                            </ul>
+
+                            
+                        </div>
+
+                        
+                        
+
+                        
+                        
+                        <div class="p-6">
+                            <h4 class="font-bold text-gray-900 mb-4 text-lg">📝 Steps</h4>
+
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    1
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify pd-secret does NOT exist (clean state)</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Before creating a secret, verify it doesn&#39;t already exist to ensure we&#39;re testing CAMO&#39;s create behavior.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret pd-secret -n openshift-monitoring 2\u003e\u00261&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret pd-secret -n openshift-monitoring 2&gt;&amp;1</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">Error from server (NotFound)</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Ensures clean starting state - if secret exists, delete it first or skip this test
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_create_pagerduty_secret', 1)"
+                                           @change="toggleStepCompletion('test_create_pagerduty_secret', 1)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    2
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Create pd-secret with test PagerDuty key</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        CAMO looks for a secret named &#39;pd-secret&#39; with key &#39;PAGERDUTY_KEY&#39;. When created, CAMO&#39;s watch triggers reconciliation.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc create secret generic pd-secret --from-literal=PAGERDUTY_KEY=TEST_KEY_CHANGEME -n openshift-monitoring&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc create secret generic pd-secret --from-literal=PAGERDUTY_KEY=TEST_KEY_CHANGEME -n openshift-monitoring</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">secret/pd-secret created</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Creates the secret that CAMO watches, triggering automatic Alertmanager reconfiguration
+                                </div>
+                                
+
+                                
+                                
+                                <div class="mt-3 space-y-2">
+                                    
+                                    <details class="bg-red-50 border border-red-200 rounded p-3">
+                                        <summary class="cursor-pointer font-medium text-red-800 text-sm">
+                                            🚨 Error: Error from server (AlreadyExists): secrets &#34;pd-secret&#34; already exists
+                                        </summary>
+                                        <div class="mt-2 text-sm text-red-700 space-y-1">
+                                            <div><span class="font-semibold">Solution:</span> Secret already exists. Delete it first: oc delete secret pd-secret -n openshift-monitoring, or use --dry-run=client to test the command</div>
+                                            
+                                        </div>
+                                    </details>
+                                    
+                                    <details class="bg-red-50 border border-red-200 rounded p-3">
+                                        <summary class="cursor-pointer font-medium text-red-800 text-sm">
+                                            🚨 Error: Error from server (Forbidden): secrets is forbidden
+                                        </summary>
+                                        <div class="mt-2 text-sm text-red-700 space-y-1">
+                                            <div><span class="font-semibold">Solution:</span> You lack permissions to create secrets in openshift-monitoring. Request cluster-admin role.</div>
+                                            
+                                        </div>
+                                    </details>
+                                    
+                                </div>
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_create_pagerduty_secret', 2)"
+                                           @change="toggleStepCompletion('test_create_pagerduty_secret', 2)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    3
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Wait for CAMO to reconcile (30-60 seconds)</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Operator watches are eventually consistent. CAMO needs time to detect the new secret, reconcile, and update alertmanager-main.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;sleep 60 \u0026\u0026 echo &#39;Reconciliation period complete&#39;&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">sleep 60 &amp;&amp; echo &#39;Reconciliation period complete&#39;</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">Reconciliation period complete</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Gives CAMO time to detect the secret and update Alertmanager configuration
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_create_pagerduty_secret', 3)"
+                                           @change="toggleStepCompletion('test_create_pagerduty_secret', 3)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    4
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify CAMO added PagerDuty receiver to Alertmanager config</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        After reconciliation, alertmanager-main secret should now contain a &#39;pagerduty&#39; receiver configured with the routing key from pd-secret.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == \&#34;pagerduty\&#34;)&#39; -&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == &#34;pagerduty&#34;)&#39; -</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">name: pagerduty</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms CAMO successfully added PagerDuty receiver to Alertmanager configuration
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_create_pagerduty_secret', 4)"
+                                           @change="toggleStepCompletion('test_create_pagerduty_secret', 4)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    5
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Check pd_secret_exists metric is 1</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        CAMO exposes metrics for monitoring. pd_secret_exists should be 1 when pd-secret exists, 0 when absent.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep &#39;pd_secret_exists&#39;&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep &#39;pd_secret_exists&#39;</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">pd_secret_exists 1</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Validates CAMO&#39;s internal state matches the actual secret presence
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_create_pagerduty_secret', 5)"
+                                           @change="toggleStepCompletion('test_create_pagerduty_secret', 5)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-purple-50 border-t border-purple-100">
+                            <h4 class="font-bold text-purple-900 mb-3">✅ Validation</h4>
+                            <div class="space-y-3 text-sm">
+                                <div>
+                                    <span class="font-semibold text-purple-800">Success Criteria:</span>
+                                    <ul class="mt-2 space-y-1">
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>pd-secret created successfully</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>Alertmanager config contains &#39;pagerduty&#39; receiver</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>pd_secret_exists metric shows 1</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>No errors in CAMO operator logs</span>
+                                        </li>
+                                        
+                                    </ul>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What success means:</span>
+                                    <p class="text-purple-700 mt-1">CAMO successfully detected pd-secret and reconfigured Alertmanager to route alerts to PagerDuty</p>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What failure means:</span>
+                                    <p class="text-purple-700 mt-1">CAMO failed to reconcile. Check operator logs for errors. Secret may have wrong key name or CAMO may not have RBAC permissions.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        
+                        
+                        <div class="p-6 bg-red-50 border-t border-red-100">
+                            <h4 class="font-bold text-red-900 mb-3">🔧 Troubleshooting</h4>
+                            <div class="space-y-4">
+                                
+                                <details class="bg-white border border-red-200 rounded-lg p-4">
+                                    <summary class="cursor-pointer font-semibold text-red-800">
+                                        Secret created but pagerduty receiver not in config after 2 minutes
+                                    </summary>
+                                    <div class="mt-3 space-y-2 text-sm">
+                                        <div><span class="font-semibold">Likely cause:</span> CAMO reconciliation failed or operator is not running</div>
+                                        <div>
+                                            <span class="font-semibold">Debug steps:</span>
+                                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1">
+                                                
+                                                <li class="text-gray-700">Check CAMO pod is running: oc get pods -n openshift-monitoring -l name=configure-alertmanager-operator</li>
+                                                
+                                                <li class="text-gray-700">Check CAMO logs for errors: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator --tail=50</li>
+                                                
+                                                <li class="text-gray-700">Verify secret has correct key: oc get secret pd-secret -n openshift-monitoring -o jsonpath=&#39;{.data.PAGERDUTY_KEY}&#39;</li>
+                                                
+                                            </ol>
+                                        </div>
+                                        <div><span class="font-semibold">Fix:</span> Review logs for specific error, ensure secret has PAGERDUTY_KEY key (not pagerduty_key or other variations)</div>
+                                        <div><span class="font-semibold">Prevention:</span> Always check operator logs after creating secrets to confirm reconciliation succeeded</div>
+                                        
+                                    </div>
+                                </details>
+                                
+                            </div>
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-gray-50 border-t border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-3">🎯 Next Steps</h4>
+                            <div class="text-sm text-gray-700 mb-4">⚠️ CLEANUP REQUIRED: Run test_cleanup_pagerduty_secret to remove the test secret and restore Alertmanager config</div>
+
+                            
+                            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                                <h5 class="font-semibold text-gray-800 mb-2">🌟 Bonus Exploration</h5>
+                                <ul class="space-y-1">
+                                    
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>Examine the complete pagerduty receiver config with yq</span>
+                                    </li>
+                                    
+                                    <li class="text-gray-600 text-sm flex items-start">
+                                        <span class="mr-2">→</span>
+                                        <span>Watch CAMO logs during reconciliation: oc logs -f -n openshift-monitoring deployment/configure-alertmanager-operator</span>
+                                    </li>
+                                    
+                                </ul>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+            
+                
+                <div class="test-card bg-white rounded-lg shadow-md overflow-hidden border-2 transition-all"
+                     :class="getTestCardClass('test_cleanup_pagerduty_secret')"
+                     x-show="filterTest({&#34;metadata&#34;:{&#34;id&#34;:&#34;test_cleanup_pagerduty_secret&#34;,&#34;name&#34;:&#34;test_cleanup_pagerduty_secret&#34;,&#34;title&#34;:&#34;Cleanup: Remove PagerDuty Secret&#34;,&#34;category&#34;:&#34;cleanup&#34;,&#34;difficulty&#34;:&#34;beginner&#34;,&#34;estimated_time&#34;:&#34;10 minutes&#34;,&#34;hands_on_percentage&#34;:80,&#34;system_impact&#34;:{&#34;type&#34;:&#34;modifies-state&#34;,&#34;description&#34;:&#34;Deletes pd-secret, which triggers CAMO to remove PagerDuty receiver from Alertmanager config&#34;,&#34;affected_resources&#34;:[&#34;Secret: pd-secret (deleted)&#34;,&#34;Secret: alertmanager-main (modified by CAMO to remove PagerDuty receiver)&#34;],&#34;reversible&#34;:true,&#34;persistence&#34;:&#34;permanent&#34;,&#34;risk_level&#34;:&#34;low&#34;},&#34;state_management&#34;:{&#34;requires_backup&#34;:false,&#34;requires_cleanup&#34;:false,&#34;restores_state&#34;:true},&#34;safety&#34;:{&#34;can_run_in_production&#34;:false,&#34;requires_confirmation&#34;:false,&#34;safe_to_retry&#34;:true,&#34;idempotent&#34;:true}},&#34;learning&#34;:{&#34;objectives&#34;:[&#34;Understand how deleting secrets triggers CAMO reconciliation&#34;,&#34;Learn cleanup procedures for test resources&#34;,&#34;Verify system returns to original state after cleanup&#34;],&#34;concepts_covered&#34;:[&#34;pagerduty_integration&#34;,&#34;camo_operator&#34;],&#34;skills_gained&#34;:[&#34;Delete Kubernetes secrets safely&#34;,&#34;Verify cleanup completed successfully&#34;,&#34;Understand declarative resource management&#34;],&#34;common_beginner_mistakes&#34;:null},&#34;test_execution&#34;:{&#34;objective&#34;:&#34;Remove pd-secret and verify CAMO automatically removes PagerDuty receiver from Alertmanager&#34;,&#34;duration&#34;:&#34;10 minutes&#34;,&#34;dependencies&#34;:[&#34;test_create_pagerduty_secret&#34;],&#34;prerequisites&#34;:[&#34;pd-secret exists from previous test&#34;],&#34;steps&#34;:[{&#34;step_number&#34;:1,&#34;title&#34;:&#34;Verify pd-secret exists before deletion&#34;,&#34;learning_note&#34;:&#34;Always verify a resource exists before attempting to delete it to avoid confusion.&#34;,&#34;command&#34;:&#34;oc get secret pd-secret -n openshift-monitoring&#34;,&#34;expected_output&#34;:&#34;pd-secret   Opaque   1&#34;,&#34;why_this_step&#34;:&#34;Confirms the secret we&#39;re about to delete actually exists&#34;},{&#34;step_number&#34;:2,&#34;title&#34;:&#34;Delete pd-secret&#34;,&#34;learning_note&#34;:&#34;Deleting the secret triggers CAMO to reconcile and remove PagerDuty configuration from Alertmanager.&#34;,&#34;command&#34;:&#34;oc delete secret pd-secret -n openshift-monitoring&#34;,&#34;expected_output&#34;:&#34;secret \&#34;pd-secret\&#34; deleted&#34;,&#34;why_this_step&#34;:&#34;Removes the test secret, triggering CAMO to clean up PagerDuty routing&#34;},{&#34;step_number&#34;:3,&#34;title&#34;:&#34;Wait for CAMO to reconcile&#34;,&#34;command&#34;:&#34;sleep 60 \u0026\u0026 echo &#39;Cleanup reconciliation complete&#39;&#34;,&#34;expected_output&#34;:&#34;Cleanup reconciliation complete&#34;,&#34;why_this_step&#34;:&#34;Gives CAMO time to detect deletion and update Alertmanager&#34;},{&#34;step_number&#34;:4,&#34;title&#34;:&#34;Verify PagerDuty receiver removed from Alertmanager config&#34;,&#34;learning_note&#34;:&#34;After cleanup, the pagerduty receiver should be gone. Only the default &#39;null&#39; receiver should remain.&#34;,&#34;command&#34;:&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == \&#34;pagerduty\&#34;)&#39; -&#34;,&#34;expected_output&#34;:&#34;&#34;,&#34;why_this_step&#34;:&#34;Confirms CAMO removed PagerDuty receiver, restoring original configuration&#34;},{&#34;step_number&#34;:5,&#34;title&#34;:&#34;Verify pd_secret_exists metric is 0&#34;,&#34;command&#34;:&#34;oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep &#39;pd_secret_exists&#39;&#34;,&#34;expected_output&#34;:&#34;pd_secret_exists 0&#34;,&#34;why_this_step&#34;:&#34;Confirms CAMO&#39;s internal state reflects secret deletion&#34;}],&#34;child_tests&#34;:null,&#34;validation&#34;:{&#34;success_criteria&#34;:[&#34;pd-secret successfully deleted&#34;,&#34;Pagerduty receiver removed from Alertmanager config&#34;,&#34;pd_secret_exists metric shows 0&#34;,&#34;System returned to pre-test state&#34;],&#34;how_to_verify&#34;:&#34;List all receivers: oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[].name&#39; -&#34;,&#34;what_success_means&#34;:&#34;Cleanup successful - system returned to original state before test&#34;,&#34;what_failure_means&#34;:&#34;Cleanup failed - secret deleted but Alertmanager config not updated. Check CAMO logs.&#34;}},&#34;troubleshooting&#34;:{&#34;common_failures&#34;:[],&#34;getting_help&#34;:[&#34;Check CAMO logs: oc logs -n openshift-monitoring deployment/configure-alertmanager-operator --tail=50&#34;]},&#34;next_steps&#34;:{&#34;on_success&#34;:&#34;✅ Cleanup complete. Proceed to test_create_goalert_secret to test GoAlert integration&#34;,&#34;bonus_exploration&#34;:[]},&#34;references&#34;:{&#34;documentation&#34;:[&#34;https://github.com/openshift/configure-alertmanager-operator/blob/master/README.md&#34;],&#34;related_code&#34;:[],&#34;sops&#34;:[]}})"
+                     x-cloak>
+
+                    
+                    <div class="p-6 cursor-pointer hover:bg-gray-50 transition"
+                         @click="toggleTest('test_cleanup_pagerduty_secret')">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <span class="text-3xl">4</span>
+                                    <h3 class="text-2xl font-bold text-gray-800">Cleanup: Remove PagerDuty Secret</h3>
+                                </div>
+                                <p class="text-gray-600 mt-2">Remove pd-secret and verify CAMO automatically removes PagerDuty receiver from Alertmanager</p>
+
+                                <div class="flex items-center gap-4 mt-4 text-sm flex-wrap">
+                                    <span class="difficulty-badge difficulty-beginner">
+                                        beginner
+                                    </span>
+                                    <span class="text-gray-600">⏱️ 10 minutes</span>
+                                    <span class="text-gray-600">🎯 80% hands-on</span>
+                                    
+                                    <span class="text-gray-600">⛓️ Depends on: 1 test(s)</span>
+                                    
+
+                                    
+                                    
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                        ✏️ Modifies State
+                                    </span>
+                                    
+
+                                    
+                                    
+                                </div>
+                            </div>
+
+                            
+                            <div class="flex items-center gap-4 ml-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isTestCompleted('test_cleanup_pagerduty_secret')"
+                                           @change="toggleTestCompletion('test_cleanup_pagerduty_secret')"
+                                           @click.stop
+                                           class="w-6 h-6 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm font-medium text-gray-700">Complete</span>
+                                </label>
+
+                                <svg class="w-6 h-6 text-gray-400 transition-transform"
+                                     :class="{'rotate-180': expandedTests.includes('test_cleanup_pagerduty_secret')}">
+                                    <path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    
+                    <div x-show="expandedTests.includes('test_cleanup_pagerduty_secret')"
+                         x-collapse
+                         class="border-t border-gray-200">
+
+                        
+                        
+                        <div class="p-6 bg-yellow-50 border-b border-yellow-200">
+                            <h4 class="font-bold text-yellow-900 mb-3 flex items-center">
+                                
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                </svg>
+                                ⚠️ System Impact - Modifies State
+                                
+                            </h4>
+
+                            
+                            
+
+                            
+                            <div class="bg-white rounded-lg p-4 mb-4 border border-yellow-200">
+                                <div class="space-y-3 text-sm">
+                                    <div>
+                                        <span class="font-semibold text-yellow-800">Impact:</span>
+                                        <p class="text-gray-700 mt-1">Deletes pd-secret, which triggers CAMO to remove PagerDuty receiver from Alertmanager config</p>
+                                    </div>
+
+                                    
+                                    <div>
+                                        <span class="font-semibold text-yellow-800">Affected Resources:</span>
+                                        <ul class="mt-1 space-y-1">
+                                            
+                                            <li class="flex items-start text-gray-700">
+                                                <span class="mr-2">•</span>
+                                                <span>Secret: pd-secret (deleted)</span>
+                                            </li>
+                                            
+                                            <li class="flex items-start text-gray-700">
+                                                <span class="mr-2">•</span>
+                                                <span>Secret: alertmanager-main (modified by CAMO to remove PagerDuty receiver)</span>
+                                            </li>
+                                            
+                                        </ul>
+                                    </div>
+                                    
+
+                                    <div class="grid grid-cols-2 gap-4 pt-2">
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Reversible:</span>
+                                            <span class="ml-2">✅ Yes</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Persistence:</span>
+                                            <span class="ml-2">permanent</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Risk Level:</span>
+                                            <span class="ml-2">low</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Safe to Retry:</span>
+                                            <span class="ml-2">✅ Yes</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            
+                            <div class="bg-white rounded-lg p-4 border border-yellow-200">
+                                <h5 class="font-semibold text-yellow-900 mb-3">State Management</h5>
+                                <div class="space-y-2 text-sm">
+                                    
+
+                                    
+
+                                    
+
+                                    
+                                    <div class="flex items-start">
+                                        <span class="text-yellow-700 font-medium mr-2">🚫 Production:</span>
+                                        <span class="text-gray-700">This test should NOT be run in production environments</span>
+                                    </div>
+                                    
+                                </div>
+                            </div>
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-green-50 border-b border-green-100">
+                            <h4 class="font-bold text-green-900 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"/>
+                                </svg>
+                                What You'll Learn
+                            </h4>
+                            <ul class="space-y-2">
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Understand how deleting secrets triggers CAMO reconciliation</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Learn cleanup procedures for test resources</span>
+                                </li>
+                                
+                                <li class="flex items-start text-sm text-green-800">
+                                    <span class="mr-2">✓</span>
+                                    <span>Verify system returns to original state after cleanup</span>
+                                </li>
+                                
+                            </ul>
+
+                            
+                        </div>
+
+                        
+                        
+
+                        
+                        
+                        <div class="p-6">
+                            <h4 class="font-bold text-gray-900 mb-4 text-lg">📝 Steps</h4>
+
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    1
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify pd-secret exists before deletion</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Always verify a resource exists before attempting to delete it to avoid confusion.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret pd-secret -n openshift-monitoring&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret pd-secret -n openshift-monitoring</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">pd-secret   Opaque   1</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms the secret we&#39;re about to delete actually exists
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_cleanup_pagerduty_secret', 1)"
+                                           @change="toggleStepCompletion('test_cleanup_pagerduty_secret', 1)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    2
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Delete pd-secret</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        Deleting the secret triggers CAMO to reconcile and remove PagerDuty configuration from Alertmanager.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc delete secret pd-secret -n openshift-monitoring&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc delete secret pd-secret -n openshift-monitoring</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">secret &#34;pd-secret&#34; deleted</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Removes the test secret, triggering CAMO to clean up PagerDuty routing
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_cleanup_pagerduty_secret', 2)"
+                                           @change="toggleStepCompletion('test_cleanup_pagerduty_secret', 2)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    3
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Wait for CAMO to reconcile</h5>
+
+                                
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;sleep 60 \u0026\u0026 echo &#39;Cleanup reconciliation complete&#39;&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">sleep 60 &amp;&amp; echo &#39;Cleanup reconciliation complete&#39;</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">Cleanup reconciliation complete</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Gives CAMO time to detect deletion and update Alertmanager
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_cleanup_pagerduty_secret', 3)"
+                                           @change="toggleStepCompletion('test_cleanup_pagerduty_secret', 3)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    4
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify PagerDuty receiver removed from Alertmanager config</h5>
+
+                                
+                                
+                                <div class="bg-blue-50 border-l-4 border-blue-300 p-3 mb-3 rounded">
+                                    <div class="text-sm text-blue-900">
+                                        <span class="font-semibold">💡 Learning Note:</span>
+                                        After cleanup, the pagerduty receiver should be gone. Only the default &#39;null&#39; receiver should remain.
+                                    </div>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == \&#34;pagerduty\&#34;)&#39; -&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc get secret alertmanager-main -n openshift-monitoring -o jsonpath=&#39;{.data.alertmanager\.yaml}&#39; | base64 -d | yq eval &#39;.receivers[] | select(.name == &#34;pagerduty&#34;)&#39; -</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1"></code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms CAMO removed PagerDuty receiver, restoring original configuration
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_cleanup_pagerduty_secret', 4)"
+                                           @change="toggleStepCompletion('test_cleanup_pagerduty_secret', 4)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-6 border-l-4 border-blue-500 pl-6 relative">
+                                
+                                <div class="absolute -left-4 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
+                                    5
+                                </div>
+
+                                
+                                <h5 class="font-bold text-gray-800 mb-2 text-lg">Verify pd_secret_exists metric is 0</h5>
+
+                                
+                                
+
+                                
+                                
+                                <div class="relative group">
+                                    <button @click="copyToClipboard(&#34;oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep &#39;pd_secret_exists&#39;&#34;, $event)"
+                                            class="absolute right-2 top-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition no-print">
+                                        Copy
+                                    </button>
+                                    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">oc exec -n openshift-monitoring deployment/configure-alertmanager-operator -- curl -s localhost:8080/metrics | grep &#39;pd_secret_exists&#39;</code></pre>
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Expected output:</span>
+                                    <code class="bg-gray-100 px-2 py-1 rounded ml-1">pd_secret_exists 0</code>
+                                </div>
+                                
+
+                                
+                                
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="font-semibold">Why this step:</span>
+                                    Confirms CAMO&#39;s internal state reflects secret deletion
+                                </div>
+                                
+
+                                
+                                
+
+                                
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="isStepCompleted('test_cleanup_pagerduty_secret', 5)"
+                                           @change="toggleStepCompletion('test_cleanup_pagerduty_secret', 5)"
+                                           class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-600">Mark step as complete</span>
+                                </label>
+                            </div>
+                            
+                        </div>
+                        
+
+                        
+                        <div class="p-6 bg-purple-50 border-t border-purple-100">
+                            <h4 class="font-bold text-purple-900 mb-3">✅ Validation</h4>
+                            <div class="space-y-3 text-sm">
+                                <div>
+                                    <span class="font-semibold text-purple-800">Success Criteria:</span>
+                                    <ul class="mt-2 space-y-1">
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>pd-secret successfully deleted</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>Pagerduty receiver removed from Alertmanager config</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>pd_secret_exists metric shows 0</span>
+                                        </li>
+                                        
+                                        <li class="flex items-start text-purple-700">
+                                            <span class="mr-2">✓</span>
+                                            <span>System returned to pre-test state</span>
+                                        </li>
+                                        
+                                    </ul>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What success means:</span>
+                                    <p class="text-purple-700 mt-1">Cleanup successful - system returned to original state before test</p>
+                                </div>
+                                <div class="bg-white rounded p-3">
+                                    <span class="font-semibold text-purple-800">What failure means:</span>
+                                    <p class="text-purple-700 mt-1">Cleanup failed - secret deleted but Alertmanager config not updated. Check CAMO logs.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        
+                        
+
+                        
+                        <div class="p-6 bg-gray-50 border-t border-gray-200">
+                            <h4 class="font-bold text-gray-900 mb-3">🎯 Next Steps</h4>
+                            <div class="text-sm text-gray-700 mb-4">✅ Cleanup complete. Proceed to test_create_goalert_secret to test GoAlert integration</div>
+
+                            
+                        </div>
+                    </div>
+                </div>
+            
+        </div>
+
+        
+        <div class="mt-12 text-center text-gray-600 text-sm pb-8">
+            <p>Generated from Test Plan v1.0 • 2026-02-18</p>
+            <p class="mt-2">Progress is saved in your browser's local storage</p>
+        </div>
+    </div>
+
+    <script>
+        
+        function testPlanApp() {
+            return {
+                searchTerm: '',
+                difficultyFilter: '',
+                productionSafetyFilter: '',
+                testTypeFilter: '',
+                impactTypeFilter: '',
+                rbacLevelFilter: '',
+                inputValidationFilter: '',
+                expandedTests: [],
+                completedTests: [],
+                completedSteps: {},
+                progressPercentage: 0,
+
+                init() {
+                    
+                    this.loadProgress();
+                    this.calculateProgress();
+
+                    
+                    setTimeout(() => {
+                        document.querySelectorAll('pre code').forEach((block) => {
+                            hljs.highlightElement(block);
+                        });
+                    }, 100);
+                },
+
+                filterTest(test) {
+                    
+                    if (this.difficultyFilter && test.metadata.difficulty !== this.difficultyFilter) {
+                        return false;
+                    }
+
+                    
+                    if (this.productionSafetyFilter) {
+                        const canRunInProd = test.metadata.safety.can_run_in_production;
+                        if (this.productionSafetyFilter === 'production-safe' && !canRunInProd) {
+                            return false;
+                        }
+                        if (this.productionSafetyFilter === 'test-only' && canRunInProd) {
+                            return false;
+                        }
+                    }
+
+                    
+                    if (this.testTypeFilter) {
+                        const childTests = test.test_execution.child_tests || [];
+                        const hasMatchingType = childTests.some(ct => ct.test_type === this.testTypeFilter);
+                        if (!hasMatchingType && childTests.length > 0) {
+                            return false;
+                        }
+                    }
+
+                    
+                    if (this.impactTypeFilter) {
+                        
+                        if (test.metadata.system_impact.type !== this.impactTypeFilter) {
+                            
+                            const childTests = test.test_execution.child_tests || [];
+                            const hasMatchingImpact = childTests.some(ct => ct.impact_type === this.impactTypeFilter);
+                            if (!hasMatchingImpact) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    
+                    if (this.rbacLevelFilter) {
+                        const childTests = test.test_execution.child_tests || [];
+                        const hasMatchingRBAC = childTests.some(ct => ct.rbac_level === this.rbacLevelFilter);
+                        if (!hasMatchingRBAC && childTests.length > 0) {
+                            return false;
+                        }
+                    }
+
+                    
+                    if (this.inputValidationFilter) {
+                        const childTests = test.test_execution.child_tests || [];
+                        const hasMatchingValidation = childTests.some(ct => ct.input_validation === this.inputValidationFilter);
+                        if (!hasMatchingValidation && childTests.length > 0) {
+                            return false;
+                        }
+                    }
+
+                    
+                    if (this.searchTerm) {
+                        const term = this.searchTerm.toLowerCase();
+                        const steps = test.test_execution.steps || [];
+                        const childTests = test.test_execution.child_tests || [];
+                        const searchableText = [
+                            test.metadata.title,
+                            test.test_execution.objective,
+                            test.learning.objectives.join(' '),
+                            steps.map(s => s.title + ' ' + s.learning_note).join(' '),
+                            childTests.map(ct => ct.title + ' ' + ct.learning_note).join(' ')
+                        ].join(' ').toLowerCase();
+
+                        return searchableText.includes(term);
+                    }
+
+                    return true;
+                },
+
+                clearFilters() {
+                    this.searchTerm = '';
+                    this.difficultyFilter = '';
+                    this.productionSafetyFilter = '';
+                    this.testTypeFilter = '';
+                    this.impactTypeFilter = '';
+                    this.rbacLevelFilter = '';
+                    this.inputValidationFilter = '';
+                },
+
+                toggleTest(testId) {
+                    const index = this.expandedTests.indexOf(testId);
+                    if (index > -1) {
+                        this.expandedTests.splice(index, 1);
+                    } else {
+                        this.expandedTests.push(testId);
+                    }
+                },
+
+                expandAll() {
+                    this.expandedTests = "[\"test_verify_camo_deployment\",\"test_read_alertmanager_config\",\"test_create_pagerduty_secret\",\"test_cleanup_pagerduty_secret\"]";
+                },
+
+                collapseAll() {
+                    this.expandedTests = [];
+                },
+
+                isTestCompleted(testId) {
+                    return this.completedTests.includes(testId);
+                },
+
+                toggleTestCompletion(testId) {
+                    const index = this.completedTests.indexOf(testId);
+                    if (index > -1) {
+                        this.completedTests.splice(index, 1);
+                    } else {
+                        this.completedTests.push(testId);
+                    }
+                    this.saveProgress();
+                    this.calculateProgress();
+                },
+
+                isStepCompleted(testId, stepNumber) {
+                    const key = `${testId}-${stepNumber}`;
+                    return this.completedSteps[key] === true;
+                },
+
+                toggleStepCompletion(testId, stepNumber) {
+                    const key = `${testId}-${stepNumber}`;
+                    this.completedSteps[key] = !this.completedSteps[key];
+                    this.saveProgress();
+                    this.calculateProgress();
+                },
+
+                getTestCardClass(testId) {
+                    if (this.completedTests.includes(testId)) {
+                        return 'border-green-500 bg-green-50';
+                    }
+                    if (this.expandedTests.includes(testId)) {
+                        return 'border-blue-500';
+                    }
+                    return 'border-gray-200';
+                },
+
+                calculateProgress() {
+                    const totalTests =  4 ;
+                    const completedCount = this.completedTests.length;
+                    this.progressPercentage = totalTests > 0 ? (completedCount / totalTests) * 100 : 0;
+                },
+
+                saveProgress() {
+                    const progress = {
+                        completedTests: this.completedTests,
+                        completedSteps: this.completedSteps,
+                        lastUpdated: new Date().toISOString()
+                    };
+                    localStorage.setItem('testplan_progress', JSON.stringify(progress));
+                },
+
+                loadProgress() {
+                    const saved = localStorage.getItem('testplan_progress');
+                    if (saved) {
+                        try {
+                            const progress = JSON.parse(saved);
+                            this.completedTests = progress.completedTests || [];
+                            this.completedSteps = progress.completedSteps || {};
+                        } catch (e) {
+                            console.error('Error loading progress:', e);
+                        }
+                    }
+                },
+
+                resetProgress() {
+                    if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+                        this.completedTests = [];
+                        this.completedSteps = {};
+                        this.saveProgress();
+                        this.calculateProgress();
+                    }
+                },
+
+                copyToClipboard(text, event) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        const button = event.target;
+                        const originalText = button.textContent;
+                        button.textContent = 'Copied!';
+                        button.classList.add('bg-green-600');
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                            button.classList.remove('bg-green-600');
+                        }, 2000);
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
