@@ -133,7 +133,29 @@
         "difficulty": "beginner",
         "estimated_time": "30 minutes",
         "hands_on_percentage": 70,
-        "source_test": "path/to/test_file.go:line_number"
+        "source_test": "path/to/test_file.go:line_number",
+
+        "system_impact": {
+          "type": "read-only",
+          "description": "Only reads cluster information, makes no changes",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "temporary",
+          "risk_level": "low"
+        },
+
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": false
+        },
+
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
       },
       "learning": {
         "objectives": [
@@ -253,7 +275,38 @@
         "category": "deployment",
         "difficulty": "intermediate",
         "estimated_time": "45 minutes",
-        "hands_on_percentage": 85
+        "hands_on_percentage": 85,
+
+        "system_impact": {
+          "type": "modifies-state",
+          "description": "Deploys new application to cluster - creates deployment, service, and pods",
+          "affected_resources": [
+            "Deployment: sample-app",
+            "Service: sample-app-svc",
+            "Pods: sample-app-*",
+            "Namespace: test-app"
+          ],
+          "reversible": true,
+          "persistence": "permanent",
+          "risk_level": "medium"
+        },
+
+        "state_management": {
+          "requires_backup": false,
+          "backup_test": null,
+          "requires_cleanup": true,
+          "cleanup_test": "test_cleanup_sample_app",
+          "restores_state": false,
+          "state_verification": null
+        },
+
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": true,
+          "warning_message": "⚠️ This test will deploy an application to the cluster. Resources will persist until cleanup.",
+          "safe_to_retry": true,
+          "idempotent": true
+        }
       },
       "learning": {
         "objectives": [

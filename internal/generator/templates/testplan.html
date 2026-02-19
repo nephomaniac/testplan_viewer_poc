@@ -237,7 +237,7 @@
                                 </div>
                                 <p class="text-gray-600 mt-2">{{$test.TestExecution.Objective}}</p>
 
-                                <div class="flex items-center gap-4 mt-4 text-sm">
+                                <div class="flex items-center gap-4 mt-4 text-sm flex-wrap">
                                     <span class="difficulty-badge difficulty-{{$test.Metadata.Difficulty}}">
                                         {{$test.Metadata.Difficulty}}
                                     </span>
@@ -245,6 +245,32 @@
                                     <span class="text-gray-600">🎯 {{$test.Metadata.HandsOnPercentage}}% hands-on</span>
                                     {{if $test.TestExecution.Dependencies}}
                                     <span class="text-gray-600">⛓️ Depends on: {{len $test.TestExecution.Dependencies}} test(s)</span>
+                                    {{end}}
+
+                                    <!-- System Impact Badge -->
+                                    {{if eq $test.Metadata.SystemImpact.Type "read-only"}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                        👁️ Read-Only
+                                    </span>
+                                    {{else if eq $test.Metadata.SystemImpact.Type "modifies-state"}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                        ✏️ Modifies State
+                                    </span>
+                                    {{else if eq $test.Metadata.SystemImpact.Type "destructive"}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                        🚨 Destructive
+                                    </span>
+                                    {{end}}
+
+                                    <!-- Risk Level Badge -->
+                                    {{if eq $test.Metadata.SystemImpact.RiskLevel "critical"}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-red-600 text-white">
+                                        ⚠️ Critical Risk
+                                    </span>
+                                    {{else if eq $test.Metadata.SystemImpact.RiskLevel "high"}}
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+                                        High Risk
+                                    </span>
                                     {{end}}
                                 </div>
                             </div>
@@ -272,6 +298,127 @@
                     <div x-show="expandedTests.includes('{{$test.Metadata.ID}}')"
                          x-collapse
                          class="border-t border-gray-200">
+
+                        <!-- Safety and System Impact -->
+                        {{if ne $test.Metadata.SystemImpact.Type "read-only"}}
+                        <div class="p-6 {{if eq $test.Metadata.SystemImpact.Type "destructive"}}bg-red-50 border-b border-red-200{{else}}bg-yellow-50 border-b border-yellow-200{{end}}">
+                            <h4 class="font-bold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-900{{else}}text-yellow-900{{end}} mb-3 flex items-center">
+                                {{if eq $test.Metadata.SystemImpact.Type "destructive"}}
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                </svg>
+                                🚨 Safety Warning - Destructive Test
+                                {{else}}
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                </svg>
+                                ⚠️ System Impact - Modifies State
+                                {{end}}
+                            </h4>
+
+                            <!-- Warning Message -->
+                            {{if $test.Metadata.Safety.WarningMessage}}
+                            <div class="{{if eq $test.Metadata.SystemImpact.Type "destructive"}}bg-red-100 border border-red-300{{else}}bg-yellow-100 border border-yellow-300{{end}} rounded-lg p-4 mb-4">
+                                <p class="{{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-900{{else}}text-yellow-900{{end}} font-semibold">
+                                    {{$test.Metadata.Safety.WarningMessage}}
+                                </p>
+                            </div>
+                            {{end}}
+
+                            <!-- System Impact Details -->
+                            <div class="bg-white rounded-lg p-4 mb-4 border {{if eq $test.Metadata.SystemImpact.Type "destructive"}}border-red-200{{else}}border-yellow-200{{end}}">
+                                <div class="space-y-3 text-sm">
+                                    <div>
+                                        <span class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-800{{else}}text-yellow-800{{end}}">Impact:</span>
+                                        <p class="text-gray-700 mt-1">{{$test.Metadata.SystemImpact.Description}}</p>
+                                    </div>
+
+                                    {{if $test.Metadata.SystemImpact.AffectedResources}}
+                                    <div>
+                                        <span class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-800{{else}}text-yellow-800{{end}}">Affected Resources:</span>
+                                        <ul class="mt-1 space-y-1">
+                                            {{range $test.Metadata.SystemImpact.AffectedResources}}
+                                            <li class="flex items-start text-gray-700">
+                                                <span class="mr-2">•</span>
+                                                <span>{{.}}</span>
+                                            </li>
+                                            {{end}}
+                                        </ul>
+                                    </div>
+                                    {{end}}
+
+                                    <div class="grid grid-cols-2 gap-4 pt-2">
+                                        <div>
+                                            <span class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-800{{else}}text-yellow-800{{end}}">Reversible:</span>
+                                            <span class="ml-2">{{if $test.Metadata.SystemImpact.Reversible}}✅ Yes{{else}}❌ No{{end}}</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-800{{else}}text-yellow-800{{end}}">Persistence:</span>
+                                            <span class="ml-2">{{$test.Metadata.SystemImpact.Persistence}}</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-800{{else}}text-yellow-800{{end}}">Risk Level:</span>
+                                            <span class="ml-2">{{$test.Metadata.SystemImpact.RiskLevel}}</span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-800{{else}}text-yellow-800{{end}}">Safe to Retry:</span>
+                                            <span class="ml-2">{{if $test.Metadata.Safety.SafeToRetry}}✅ Yes{{else}}❌ No{{end}}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- State Management Requirements -->
+                            <div class="bg-white rounded-lg p-4 border {{if eq $test.Metadata.SystemImpact.Type "destructive"}}border-red-200{{else}}border-yellow-200{{end}}">
+                                <h5 class="font-semibold {{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-900{{else}}text-yellow-900{{end}} mb-3">State Management</h5>
+                                <div class="space-y-2 text-sm">
+                                    {{if $test.Metadata.StateManagement.RequiresBackup}}
+                                    <div class="flex items-start">
+                                        <span class="{{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-700{{else}}text-yellow-700{{end}} font-medium mr-2">⚠️ Backup Required:</span>
+                                        <span class="text-gray-700">
+                                            Must run test <code class="bg-gray-100 px-2 py-0.5 rounded">{{$test.Metadata.StateManagement.BackupTest}}</code> before executing this test
+                                        </span>
+                                    </div>
+                                    {{end}}
+
+                                    {{if $test.Metadata.StateManagement.RequiresCleanup}}
+                                    <div class="flex items-start">
+                                        <span class="{{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-700{{else}}text-yellow-700{{end}} font-medium mr-2">🧹 Cleanup Required:</span>
+                                        <span class="text-gray-700">
+                                            Run test <code class="bg-gray-100 px-2 py-0.5 rounded">{{$test.Metadata.StateManagement.CleanupTest}}</code> after completion to restore state
+                                        </span>
+                                    </div>
+                                    {{end}}
+
+                                    {{if $test.Metadata.StateManagement.StateVerification}}
+                                    <div class="flex items-start">
+                                        <span class="{{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-700{{else}}text-yellow-700{{end}} font-medium mr-2">✓ Verification:</span>
+                                        <span class="text-gray-700">
+                                            Run test <code class="bg-gray-100 px-2 py-0.5 rounded">{{$test.Metadata.StateManagement.StateVerification}}</code> to verify state was restored
+                                        </span>
+                                    </div>
+                                    {{end}}
+
+                                    {{if not $test.Metadata.Safety.CanRunInProduction}}
+                                    <div class="flex items-start">
+                                        <span class="{{if eq $test.Metadata.SystemImpact.Type "destructive"}}text-red-700{{else}}text-yellow-700{{end}} font-medium mr-2">🚫 Production:</span>
+                                        <span class="text-gray-700">This test should NOT be run in production environments</span>
+                                    </div>
+                                    {{end}}
+                                </div>
+                            </div>
+                        </div>
+                        {{else}}
+                        <!-- Read-Only Test Badge -->
+                        <div class="p-4 bg-green-50 border-b border-green-100">
+                            <div class="flex items-center text-sm">
+                                <svg class="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-semibold text-green-800">Safe to run - This test is read-only and makes no changes to the system</span>
+                            </div>
+                        </div>
+                        {{end}}
 
                         <!-- Learning Objectives -->
                         <div class="p-6 bg-green-50 border-b border-green-100">
@@ -336,6 +483,31 @@
                                         Copy
                                     </button>
                                     <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm mb-2"><code class="language-bash">{{$step.Command}}</code></pre>
+                                </div>
+                                {{end}}
+
+                                <!-- Manual Steps (for visual validation) -->
+                                {{if $step.ManualSteps}}
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-2">
+                                    <div class="font-semibold text-purple-900 mb-2">👁️ Manual Verification Steps:</div>
+                                    <ol class="list-decimal list-inside space-y-1">
+                                        {{range $step.ManualSteps}}
+                                        <li class="text-sm text-purple-800">{{.}}</li>
+                                        {{end}}
+                                    </ol>
+                                </div>
+                                {{end}}
+
+                                <!-- Documentation Reference -->
+                                {{if $step.DocumentationReference}}
+                                <div class="text-sm text-blue-600 mb-2">
+                                    <a href="{{$step.DocumentationReference}}" target="_blank" class="hover:underline flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path>
+                                            <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"></path>
+                                        </svg>
+                                        Documentation Reference
+                                    </a>
                                 </div>
                                 {{end}}
 
@@ -434,6 +606,17 @@
                                         </div>
                                         <div><span class="font-semibold">Fix:</span> {{.Fix}}</div>
                                         <div><span class="font-semibold">Prevention:</span> {{.Prevention}}</div>
+                                        {{if .Documentation}}
+                                        <div class="pt-2">
+                                            <a href="{{.Documentation}}" target="_blank" class="text-blue-600 hover:underline text-sm flex items-center">
+                                                <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path>
+                                                    <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"></path>
+                                                </svg>
+                                                Learn more in documentation
+                                            </a>
+                                        </div>
+                                        {{end}}
                                     </div>
                                 </details>
                                 {{end}}

@@ -321,6 +321,312 @@ Identify and document gaps in coverage:
 }
 ```
 
+### Phase 6: System Impact and Safety Analysis (CRITICAL - 30-45 minutes)
+
+**REQUIRED:** Analyze every test case to determine its impact on the system under test and ensure safe execution with proper state management.
+
+#### Step 1: Classify System Impact
+
+For EACH test case, analyze the commands/operations to classify impact type:
+
+**Read-Only Tests** - Makes no changes to system state:
+```bash
+# Examples of read-only operations
+oc get pods
+kubectl describe deployment
+curl http://service/metrics
+promtool query instant 'up'
+oc logs deployment/app
+```
+
+**Characteristics:**
+- Only queries, reads, describes, or observes
+- No create, apply, patch, scale, delete operations
+- No modification flags (--patch, --replicas, etc.)
+- Safe to run anywhere, including production
+
+**Modifies-State Tests** - Changes system state, but reversible:
+```bash
+# Examples of modifying operations
+oc apply -f deployment.yaml
+oc scale deployment/app --replicas=3
+oc patch configmap/config --type=merge
+kubectl create namespace test
+helm install myapp ./chart
+```
+
+**Characteristics:**
+- Creates, updates, or scales resources
+- Changes persist after test completes
+- Reversible with cleanup/deletion
+- Requires cleanup test to restore state
+
+**Destructive Tests** - Irreversible or high-risk changes:
+```bash
+# Examples of destructive operations
+oc delete deployment production-app
+oc delete pvc data-volume
+kubectl drain node-1 --force --delete-emptydir-data
+rosa delete cluster --cluster=prod
+oc delete namespace production
+```
+
+**Characteristics:**
+- Deletes resources permanently
+- Uses --force flags
+- Cannot be undone without backup
+- Requires BOTH backup AND cleanup tests
+
+#### Step 2: Create Backup/Cleanup Pattern
+
+For every **modifies-state** or **destructive** test, create a 4-test pattern:
+
+**Pattern Example: Modifying Cluster Configuration**
+
+**Test 1: Backup Test (read-only)**
+```json
+{
+  "test_backup_cluster_config": {
+    "metadata": {
+      "id": "test_backup_cluster_config",
+      "category": "backup",
+      "system_impact": {
+        "type": "read-only",
+        "description": "Exports cluster config to backup file",
+        "affected_resources": [],
+        "reversible": true,
+        "persistence": "temporary",
+        "risk_level": "low"
+      },
+      "state_management": {
+        "requires_backup": false,
+        "requires_cleanup": false,
+        "restores_state": false
+      },
+      "safety": {
+        "can_run_in_production": true,
+        "requires_confirmation": false,
+        "safe_to_retry": true,
+        "idempotent": true
+      }
+    },
+    "test_execution": {
+      "steps": [
+        {
+          "command": "oc get cm cluster-config -o yaml > backup/config-$(date +%Y%m%d-%H%M%S).yaml"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Test 2: Modify Test (modifies-state)**
+```json
+{
+  "test_modify_cluster_config": {
+    "metadata": {
+      "id": "test_modify_cluster_config",
+      "category": "configuration",
+      "system_impact": {
+        "type": "modifies-state",
+        "description": "Modifies cluster configuration",
+        "affected_resources": ["ConfigMap: cluster-config"],
+        "reversible": true,
+        "persistence": "permanent",
+        "risk_level": "medium"
+      },
+      "state_management": {
+        "requires_backup": true,
+        "backup_test": "test_backup_cluster_config",
+        "requires_cleanup": true,
+        "cleanup_test": "test_restore_cluster_config"
+      },
+      "safety": {
+        "can_run_in_production": false,
+        "requires_confirmation": true,
+        "warning_message": "⚠️ This test modifies cluster configuration. Backup will run first. Cleanup required after.",
+        "safe_to_retry": true,
+        "idempotent": true
+      }
+    },
+    "test_execution": {
+      "dependencies": ["test_backup_cluster_config"],
+      "steps": [
+        {
+          "command": "oc patch cm cluster-config --type=merge -p '{\"data\":{\"new-key\":\"value\"}}'"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Test 3: Cleanup/Restore Test (modifies-state)**
+```json
+{
+  "test_restore_cluster_config": {
+    "metadata": {
+      "id": "test_restore_cluster_config",
+      "category": "cleanup",
+      "system_impact": {
+        "type": "modifies-state",
+        "description": "Restores cluster config from backup",
+        "affected_resources": ["ConfigMap: cluster-config"],
+        "reversible": false,
+        "persistence": "permanent",
+        "risk_level": "low"
+      },
+      "state_management": {
+        "requires_backup": false,
+        "requires_cleanup": false,
+        "restores_state": true,
+        "state_verification": "test_verify_config_restored"
+      },
+      "safety": {
+        "can_run_in_production": false,
+        "requires_confirmation": false,
+        "safe_to_retry": true,
+        "idempotent": true
+      }
+    },
+    "test_execution": {
+      "dependencies": ["test_backup_cluster_config"],
+      "steps": [
+        {
+          "command": "oc apply -f backup/config-*.yaml"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Test 4: Verification Test (read-only)**
+```json
+{
+  "test_verify_config_restored": {
+    "metadata": {
+      "id": "test_verify_config_restored",
+      "category": "validation",
+      "system_impact": {
+        "type": "read-only",
+        "description": "Verifies config matches original backup",
+        "affected_resources": [],
+        "reversible": true,
+        "persistence": "temporary",
+        "risk_level": "low"
+      },
+      "state_management": {
+        "requires_backup": false,
+        "requires_cleanup": false,
+        "restores_state": false
+      },
+      "safety": {
+        "can_run_in_production": true,
+        "requires_confirmation": false,
+        "safe_to_retry": true,
+        "idempotent": true
+      }
+    },
+    "test_execution": {
+      "dependencies": ["test_restore_cluster_config"],
+      "steps": [
+        {
+          "command": "diff <(oc get cm cluster-config -o yaml) backup/config-*.yaml"
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Step 3: Assign Safety Attributes
+
+For EVERY test, include complete safety metadata:
+
+**Safety Decision Matrix:**
+
+| Impact Type | Backup Required | Cleanup Required | Production Safe | Confirmation | Risk Level |
+|-------------|-----------------|------------------|-----------------|--------------|------------|
+| read-only | No | No | Yes | No | low |
+| modifies-state (reversible) | No | Yes | No | Yes | medium |
+| modifies-state (temp) | No | Yes | No | Yes | low-medium |
+| destructive | Yes | Yes | Never | Yes | high-critical |
+
+**Field Guidance:**
+
+- **system_impact.type**: Auto-detect from commands (get/describe = read-only, apply/create = modifies-state, delete/drain = destructive)
+- **system_impact.description**: Human-readable explanation of what changes
+- **system_impact.affected_resources**: List specific resources (e.g., "Deployment: my-app", "Namespace: test-ns")
+- **system_impact.reversible**: Can it be undone? (delete operations = false)
+- **system_impact.persistence**: "temporary" if auto-cleaned, "permanent" if persists
+- **system_impact.risk_level**: Impact severity (low/medium/high/critical)
+- **state_management.requires_backup**: true for destructive tests
+- **state_management.backup_test**: test_id of backup test
+- **state_management.requires_cleanup**: true for modifies-state and destructive
+- **state_management.cleanup_test**: test_id of cleanup/restore test
+- **state_management.restores_state**: true ONLY for cleanup tests themselves
+- **state_management.state_verification**: Optional verification test_id
+- **safety.can_run_in_production**: false for modifies-state and destructive
+- **safety.requires_confirmation**: true for high-risk tests
+- **safety.warning_message**: Clear warning for risky tests
+- **safety.safe_to_retry**: Can test be retried if it fails?
+- **safety.idempotent**: Running multiple times has same effect?
+
+#### Step 4: Create Test Dependencies
+
+Link tests in execution order:
+
+**For modifying tests:**
+```
+1. backup_test (if destructive)
+2. modify_test (depends on backup)
+3. cleanup_test (user runs manually or automatically)
+4. verify_test (depends on cleanup)
+```
+
+**Update test_execution.dependencies:**
+```json
+{
+  "test_modify_cluster_config": {
+    "test_execution": {
+      "dependencies": ["test_backup_cluster_config"]
+    }
+  },
+  "test_restore_cluster_config": {
+    "test_execution": {
+      "dependencies": ["test_backup_cluster_config"]
+    }
+  },
+  "test_verify_config_restored": {
+    "test_execution": {
+      "dependencies": ["test_restore_cluster_config"]
+    }
+  }
+}
+```
+
+#### Safety Analysis Checklist
+
+Before finalizing test plan, verify EVERY test has:
+
+- [ ] system_impact.type classified correctly (read-only/modifies-state/destructive)
+- [ ] system_impact.affected_resources listed specifically
+- [ ] system_impact.risk_level assigned appropriately
+- [ ] state_management.requires_backup set to true for destructive tests
+- [ ] state_management.backup_test links to actual backup test ID
+- [ ] state_management.requires_cleanup set to true for modifying tests
+- [ ] state_management.cleanup_test links to actual cleanup test ID
+- [ ] safety.can_run_in_production set to false for unsafe tests
+- [ ] safety.warning_message written for high-risk tests
+- [ ] Backup test exists and is read-only
+- [ ] Cleanup test exists and restores state
+- [ ] Dependencies properly linked (backup → modify → cleanup → verify)
+- [ ] Verification test validates restoration (optional but recommended)
+
+**CRITICAL REQUIREMENT:** No modifies-state or destructive test should exist without its corresponding backup/cleanup tests. If you cannot create a safe cleanup test, mark the test as "manual-cleanup-required" and document the manual steps.
+
 ## Output Format
 
 Generate test plan JSON following the schema in `.claude/templates/testplan-template.json` with these key sections:

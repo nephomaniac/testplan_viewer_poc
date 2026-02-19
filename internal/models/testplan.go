@@ -81,13 +81,46 @@ type TestCase struct {
 }
 
 type TestMetadata struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Title              string `json:"title"`
-	Category           string `json:"category"`
-	Difficulty         string `json:"difficulty"`
-	EstimatedTime      string `json:"estimated_time"`
-	HandsOnPercentage  int    `json:"hands_on_percentage"`
+	ID                 string           `json:"id"`
+	Name               string           `json:"name"`
+	Title              string           `json:"title"`
+	Category           string           `json:"category"`
+	Difficulty         string           `json:"difficulty"`
+	EstimatedTime      string           `json:"estimated_time"`
+	HandsOnPercentage  int              `json:"hands_on_percentage"`
+	SourceTest         string           `json:"source_test,omitempty"`
+	SystemImpact       SystemImpact     `json:"system_impact"`
+	StateManagement    StateManagement  `json:"state_management"`
+	Safety             Safety           `json:"safety"`
+}
+
+// SystemImpact describes what changes a test makes to the system
+type SystemImpact struct {
+	Type              string   `json:"type"`               // read-only, modifies-state, destructive
+	Description       string   `json:"description"`
+	AffectedResources []string `json:"affected_resources"`
+	Reversible        bool     `json:"reversible"`
+	Persistence       string   `json:"persistence"`        // temporary, permanent
+	RiskLevel         string   `json:"risk_level"`         // low, medium, high, critical
+}
+
+// StateManagement defines backup and cleanup requirements
+type StateManagement struct {
+	RequiresBackup     bool   `json:"requires_backup"`
+	BackupTest         string `json:"backup_test,omitempty"`
+	RequiresCleanup    bool   `json:"requires_cleanup"`
+	CleanupTest        string `json:"cleanup_test,omitempty"`
+	RestoresState      bool   `json:"restores_state"`
+	StateVerification  string `json:"state_verification,omitempty"`
+}
+
+// Safety defines safety constraints and execution requirements
+type Safety struct {
+	CanRunInProduction   bool   `json:"can_run_in_production"`
+	RequiresConfirmation bool   `json:"requires_confirmation"`
+	WarningMessage       string `json:"warning_message,omitempty"`
+	SafeToRetry          bool   `json:"safe_to_retry"`
+	Idempotent           bool   `json:"idempotent"`
 }
 
 type Learning struct {
@@ -113,13 +146,15 @@ type TestExecution struct {
 }
 
 type Step struct {
-	StepNumber     int           `json:"step_number"`
-	Title          string        `json:"title"`
-	LearningNote   string        `json:"learning_note"`
-	Command        string        `json:"command"`
-	ExpectedOutput string        `json:"expected_output"`
-	WhyThisStep    string        `json:"why_this_step"`
-	CommonErrors   []CommonError `json:"common_errors"`
+	StepNumber              int           `json:"step_number"`
+	Title                   string        `json:"title"`
+	LearningNote            string        `json:"learning_note,omitempty"`
+	Command                 *string       `json:"command"`                            // nullable for manual-only steps
+	ExpectedOutput          *string       `json:"expected_output"`                    // nullable for manual-only steps
+	WhyThisStep             string        `json:"why_this_step,omitempty"`
+	DocumentationReference  string        `json:"documentation_reference,omitempty"`
+	ManualSteps             []string      `json:"manual_steps,omitempty"`             // for visual validation
+	CommonErrors            []CommonError `json:"common_errors,omitempty"`
 }
 
 type CommonError struct {
@@ -141,11 +176,12 @@ type Troubleshooting struct {
 }
 
 type CommonFailure struct {
-	Symptom    string   `json:"symptom"`
-	Cause      string   `json:"cause"`
-	DebugSteps []string `json:"debug_steps"`
-	Fix        string   `json:"fix"`
-	Prevention string   `json:"prevention"`
+	Symptom       string   `json:"symptom"`
+	Cause         string   `json:"cause"`
+	DebugSteps    []string `json:"debug_steps"`
+	Fix           string   `json:"fix"`
+	Prevention    string   `json:"prevention"`
+	Documentation string   `json:"documentation,omitempty"`
 }
 
 type NextSteps struct {

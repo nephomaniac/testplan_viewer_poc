@@ -1,0 +1,349 @@
+{
+  "pattern": "Backup and Cleanup Test Pattern",
+  "description": "Template for creating backup, main test, and cleanup test triplets",
+
+  "example": {
+    "test_backup_cluster_config": {
+      "metadata": {
+        "id": "test_backup_cluster_config",
+        "name": "backup_cluster_config",
+        "title": "Backup Cluster Configuration",
+        "category": "backup",
+        "difficulty": "beginner",
+        "estimated_time": "5 minutes",
+        "hands_on_percentage": 90,
+
+        "system_impact": {
+          "type": "read-only",
+          "description": "Reads and saves cluster configuration to backup file",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "temporary",
+          "risk_level": "low"
+        },
+
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": false
+        },
+
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+
+      "test_execution": {
+        "objective": "Create backup of current cluster configuration for later restoration",
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Export current cluster configuration",
+            "command": "oc get cm cluster-config -n openshift-config -o yaml > backup/cluster-config-$(date +%Y%m%d-%H%M%S).yaml",
+            "expected_output": "(file created)",
+            "why_this_step": "Saves current state so we can restore after testing"
+          },
+          {
+            "step_number": 2,
+            "title": "Verify backup was created",
+            "command": "ls -lh backup/cluster-config-*.yaml | tail -1",
+            "expected_output": "-rw-r--r-- 1 user staff 2.5K ...",
+            "why_this_step": "Confirms backup file exists and has content"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Backup file created in backup/ directory",
+            "Backup file is not empty",
+            "Backup contains valid YAML"
+          ]
+        }
+      }
+    },
+
+    "test_modify_cluster_config": {
+      "metadata": {
+        "id": "test_modify_cluster_config",
+        "name": "modify_cluster_config",
+        "title": "Modify Cluster Configuration",
+        "category": "configuration",
+        "difficulty": "intermediate",
+        "estimated_time": "15 minutes",
+        "hands_on_percentage": 80,
+
+        "system_impact": {
+          "type": "modifies-state",
+          "description": "Modifies cluster configuration - changes persist until restored",
+          "affected_resources": [
+            "cluster-config ConfigMap",
+            "cluster configuration settings"
+          ],
+          "reversible": true,
+          "persistence": "permanent",
+          "risk_level": "medium"
+        },
+
+        "state_management": {
+          "requires_backup": true,
+          "backup_test": "test_backup_cluster_config",
+          "requires_cleanup": true,
+          "cleanup_test": "test_restore_cluster_config",
+          "restores_state": false
+        },
+
+        "safety": {
+          "can_run_in_production": false,
+          "requires_confirmation": true,
+          "warning_message": "⚠️ This test will modify cluster configuration. Ensure backup is complete before proceeding.",
+          "safe_to_retry": true,
+          "idempotent": false
+        }
+      },
+
+      "test_execution": {
+        "objective": "Modify cluster configuration to test configuration management",
+        "dependencies": ["test_backup_cluster_config"],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Modify cluster configuration",
+            "command": "oc patch cm cluster-config -n openshift-config --type=merge -p '{\"data\":{\"test-setting\":\"modified\"}}'",
+            "expected_output": "configmap/cluster-config patched"
+          },
+          {
+            "step_number": 2,
+            "title": "Verify modification",
+            "command": "oc get cm cluster-config -n openshift-config -o jsonpath='{.data.test-setting}'",
+            "expected_output": "modified"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Configuration modified successfully",
+            "New setting is present",
+            "No errors in cluster operators"
+          ]
+        }
+      },
+
+      "next_steps": {
+        "on_success": "Run cleanup test: test_restore_cluster_config",
+        "on_failure": "Run cleanup test immediately to restore original state"
+      }
+    },
+
+    "test_restore_cluster_config": {
+      "metadata": {
+        "id": "test_restore_cluster_config",
+        "name": "restore_cluster_config",
+        "title": "Restore Cluster Configuration",
+        "category": "cleanup",
+        "difficulty": "beginner",
+        "estimated_time": "5 minutes",
+        "hands_on_percentage": 90,
+
+        "system_impact": {
+          "type": "modifies-state",
+          "description": "Restores cluster configuration to pre-test state",
+          "affected_resources": [
+            "cluster-config ConfigMap"
+          ],
+          "reversible": false,
+          "persistence": "permanent",
+          "risk_level": "low"
+        },
+
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": true,
+          "state_verification": "test_verify_cluster_config_restored"
+        },
+
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+
+      "test_execution": {
+        "objective": "Restore cluster configuration to original state from backup",
+        "dependencies": ["test_backup_cluster_config"],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Find most recent backup",
+            "command": "BACKUP_FILE=$(ls -t backup/cluster-config-*.yaml | head -1); echo $BACKUP_FILE",
+            "expected_output": "backup/cluster-config-20260218-164500.yaml"
+          },
+          {
+            "step_number": 2,
+            "title": "Restore configuration from backup",
+            "command": "oc apply -f $BACKUP_FILE",
+            "expected_output": "configmap/cluster-config configured"
+          },
+          {
+            "step_number": 3,
+            "title": "Verify restoration",
+            "command": "oc get cm cluster-config -n openshift-config -o jsonpath='{.data.test-setting}'",
+            "expected_output": "(should be original value or empty)"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Backup file applied successfully",
+            "Configuration matches pre-test state",
+            "No errors in cluster operators"
+          ]
+        }
+      }
+    },
+
+    "test_verify_cluster_config_restored": {
+      "metadata": {
+        "id": "test_verify_cluster_config_restored",
+        "name": "verify_cluster_config_restored",
+        "title": "Verify Cluster Configuration Restored",
+        "category": "validation",
+        "difficulty": "beginner",
+        "estimated_time": "3 minutes",
+
+        "system_impact": {
+          "type": "read-only",
+          "description": "Validates that cluster configuration matches original state",
+          "affected_resources": [],
+          "reversible": true,
+          "persistence": "temporary",
+          "risk_level": "low"
+        },
+
+        "state_management": {
+          "requires_backup": false,
+          "requires_cleanup": false,
+          "restores_state": false
+        },
+
+        "safety": {
+          "can_run_in_production": true,
+          "requires_confirmation": false,
+          "safe_to_retry": true,
+          "idempotent": true
+        }
+      },
+
+      "test_execution": {
+        "objective": "Confirm cluster configuration was restored to original state",
+        "dependencies": ["test_restore_cluster_config"],
+        "steps": [
+          {
+            "step_number": 1,
+            "title": "Get current configuration hash",
+            "command": "oc get cm cluster-config -n openshift-config -o yaml | sha256sum",
+            "expected_output": "[hash value]"
+          },
+          {
+            "step_number": 2,
+            "title": "Compare with original backup hash",
+            "command": "cat $BACKUP_FILE | sha256sum",
+            "expected_output": "[same hash value]"
+          }
+        ],
+        "validation": {
+          "success_criteria": [
+            "Configuration hashes match",
+            "No test-related settings remain",
+            "Cluster is in original state"
+          ]
+        }
+      }
+    }
+  },
+
+  "pattern_summary": {
+    "test_flow": [
+      "1. test_backup_[resource] - Backup current state (read-only)",
+      "2. test_modify_[resource] - Make changes (modifies-state)",
+      "3. test_restore_[resource] - Restore from backup (modifies-state, restores_state=true)",
+      "4. test_verify_[resource]_restored - Validate restoration (read-only)"
+    ],
+
+    "execution_order": {
+      "normal_flow": [
+        "test_backup_cluster_config",
+        "test_modify_cluster_config",
+        "test_restore_cluster_config",
+        "test_verify_cluster_config_restored"
+      ],
+      "on_failure": [
+        "If test_modify_cluster_config fails:",
+        "  → Skip remaining tests",
+        "  → Run test_restore_cluster_config immediately",
+        "  → Run test_verify_cluster_config_restored",
+        "  → Report failure"
+      ],
+      "cleanup_only": [
+        "If you only need to cleanup:",
+        "  → test_restore_cluster_config",
+        "  → test_verify_cluster_config_restored"
+      ]
+    },
+
+    "best_practices": {
+      "backup_tests": [
+        "Always run before modifying tests",
+        "Should be idempotent (safe to run multiple times)",
+        "Save backups with timestamps",
+        "Verify backup has content before proceeding"
+      ],
+      "modifying_tests": [
+        "Declare backup_test dependency",
+        "Declare cleanup_test for restoration",
+        "Set appropriate risk_level",
+        "Include warning_message if high risk",
+        "Make changes reversible when possible"
+      ],
+      "cleanup_tests": [
+        "Should be idempotent",
+        "Must not fail if already clean",
+        "Verify restoration completed",
+        "Log what was restored"
+      ],
+      "verification_tests": [
+        "Use hashes or checksums when possible",
+        "Compare against known good state",
+        "Check all affected resources",
+        "Confirm no side effects remain"
+      ]
+    },
+
+    "safety_levels": {
+      "read-only": {
+        "requires_backup": false,
+        "requires_cleanup": false,
+        "can_run_in_production": true,
+        "requires_confirmation": false,
+        "risk_level": "low"
+      },
+      "modifies-state": {
+        "requires_backup": true,
+        "requires_cleanup": true,
+        "can_run_in_production": false,
+        "requires_confirmation": true,
+        "risk_level": "medium"
+      },
+      "destructive": {
+        "requires_backup": true,
+        "requires_cleanup": true,
+        "can_run_in_production": false,
+        "requires_confirmation": true,
+        "warning_message": "REQUIRED",
+        "risk_level": "high"
+      }
+    }
+  }
+}

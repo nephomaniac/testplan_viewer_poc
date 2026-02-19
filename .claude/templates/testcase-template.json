@@ -4,11 +4,39 @@
       "id": "test_id",
       "name": "test_descriptive_name",
       "title": "Human-Readable Test Title",
-      "category": "setup|deployment|configuration|monitoring|validation|troubleshooting",
+      "category": "setup|deployment|configuration|monitoring|validation|troubleshooting|backup|cleanup",
       "difficulty": "beginner|intermediate|advanced",
       "estimated_time": "XX minutes|XX hours",
       "hands_on_percentage": 70,
-      "source_test": "path/to/test_file.go:line_number (if derived from automated test)"
+      "source_test": "path/to/test_file.go:line_number (if derived from automated test)",
+
+      "system_impact": {
+        "type": "read-only|modifies-state|destructive",
+        "description": "Explanation of what changes this test makes",
+        "affected_resources": [
+          "Resource type affected (e.g., 'cluster configuration', 'deployed applications', 'persistent data')"
+        ],
+        "reversible": true,
+        "persistence": "temporary|permanent",
+        "risk_level": "low|medium|high|critical"
+      },
+
+      "state_management": {
+        "requires_backup": false,
+        "backup_test": "test_backup_id (if requires_backup is true)",
+        "requires_cleanup": false,
+        "cleanup_test": "test_cleanup_id (if requires_cleanup is true)",
+        "restores_state": false,
+        "state_verification": "test_id that verifies state was restored (optional)"
+      },
+
+      "safety": {
+        "can_run_in_production": false,
+        "requires_confirmation": true,
+        "warning_message": "Warning to display before running (if high risk)",
+        "safe_to_retry": true,
+        "idempotent": false
+      }
     },
     "learning": {
       "objectives": [

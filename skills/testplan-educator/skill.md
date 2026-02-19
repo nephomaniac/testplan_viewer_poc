@@ -475,6 +475,445 @@ jq -r '.testcases[].test_execution.steps[].command' testplan.json | \
 }
 ```
 
+### Phase 7: Safety and Impact Education (CRITICAL - 20-30 minutes)
+
+**REQUIRED:** Educate users about test safety, system impact, and state management to prevent accidents and build confidence.
+
+#### Objective
+
+Transform safety metadata into educational content that helps users:
+- Understand what impact each test has on the system
+- Know when backups are required
+- Learn how to safely execute and recover from tests
+- Build confidence by understanding risks before acting
+
+#### For Every Test: Add Safety Education
+
+**1. Explain System Impact Type**
+
+Add learning content that explains the test's impact classification:
+
+**For Read-Only Tests:**
+```json
+{
+  "learning": {
+    "safety_overview": {
+      "impact_type": "read-only",
+      "what_it_means": "This test only observes the system - it makes no changes whatsoever. Think of it like looking through a window: you can see everything, but you can't touch anything.",
+      "why_its_safe": "Read-only tests can be run anywhere (including production) without risk of breaking things. They're perfect for learning because mistakes have no consequences.",
+      "confidence_builder": "Feel free to run this test multiple times, experiment with variations, and explore the outputs. You literally cannot break anything with these commands.",
+      "learning_value": "Read-only tests are great for understanding current state and building mental models of how systems work."
+    }
+  }
+}
+```
+
+**For Modifies-State Tests:**
+```json
+{
+  "learning": {
+    "safety_overview": {
+      "impact_type": "modifies-state",
+      "what_it_means": "This test creates or changes resources in the cluster. Think of it like rearranging furniture: you can always move things back, but it takes effort.",
+      "what_changes": "Specifically, this test creates a ServiceMonitor resource. This resource will persist after the test completes.",
+      "why_cleanup_matters": "If you don't clean up test resources, they accumulate and can: 1) waste cluster resources, 2) interfere with future tests, 3) create confusion about what's 'real' vs 'test'.",
+      "how_to_be_safe": {
+        "before_running": "Make sure you understand what resources will be created (see 'Affected Resources' below)",
+        "while_running": "Pay attention to the output to confirm resources are created in the right namespace",
+        "after_completing": "Run the cleanup test (test_cleanup_servicemonitor) to restore the system to its original state"
+      },
+      "backup_restore_pattern": {
+        "explanation": "Because this test modifies state, we follow a 3-step safety pattern:",
+        "steps": [
+          {
+            "step": "1. Verify state",
+            "description": "Check current system state before making changes (like taking a mental snapshot)"
+          },
+          {
+            "step": "2. Make changes",
+            "description": "Execute the test and create/modify resources"
+          },
+          {
+            "step": "3. Cleanup",
+            "description": "Remove test resources and verify system returned to original state (run test_cleanup_servicemonitor)"
+          }
+        ]
+      },
+      "common_safety_mistakes": [
+        {
+          "mistake": "Running modifying tests in production without approval",
+          "consequence": "Accidentally creates test resources in production clusters",
+          "how_to_avoid": "Always verify your kubeconfig context before running: oc config current-context. If it says 'production', stop and switch to a test cluster.",
+          "check_command": "oc config current-context | grep -i prod && echo 'WARNING: This is a production cluster!' || echo 'OK: Non-production cluster'"
+        },
+        {
+          "mistake": "Forgetting to run cleanup tests",
+          "consequence": "Test resources accumulate, wasting resources and creating confusion",
+          "how_to_avoid": "After completing this test, immediately run the cleanup test: test_cleanup_servicemonitor. Set a reminder or add to your checklist.",
+          "pro_tip": "Some teams use GitOps to auto-delete resources in test namespaces older than 24 hours"
+        }
+      ]
+    },
+    "affected_resources_explained": {
+      "what_we_create": [
+        {
+          "resource": "ServiceMonitor 'test-monitor'",
+          "namespace": "test-namespace",
+          "why_it_exists": "Tells Prometheus to scrape metrics from our test service",
+          "how_to_verify": "oc get servicemonitor test-monitor -n test-namespace",
+          "how_to_remove": "oc delete servicemonitor test-monitor -n test-namespace (or run test_cleanup_servicemonitor)"
+        }
+      ]
+    }
+  }
+}
+```
+
+**For Destructive Tests:**
+```json
+{
+  "learning": {
+    "safety_overview": {
+      "impact_type": "destructive",
+      "what_it_means": "⚠️ CRITICAL: This test DELETES resources permanently. Think of it like tearing down a building: once gone, it's gone forever unless you have blueprints (backups).",
+      "what_gets_deleted": "This test deletes a PersistentVolumeClaim, which means all data in the volume is permanently lost.",
+      "why_extremely_risky": "Destructive tests can cause data loss, service outages, and irreversible changes. They should ONLY be run in isolated test environments with proper backups.",
+      "required_safety_steps": {
+        "mandatory_backup": {
+          "requirement": "You MUST run the backup test first: test_backup_pvc_data",
+          "why": "Without a backup, there's no way to recover if something goes wrong",
+          "what_it_backs_up": "The backup test exports all data from the PVC to a tar archive in your local filesystem",
+          "verify_backup": "Check that backup/pvc-data-TIMESTAMP.tar exists and is not zero bytes before proceeding"
+        },
+        "confirmation_required": {
+          "why": "Destructive tests require explicit confirmation to prevent accidents",
+          "what_to_confirm": "Verify: 1) You're in the RIGHT cluster, 2) Backup completed successfully, 3) You understand this is permanent, 4) You have approval if needed"
+        }
+      },
+      "backup_restore_pattern": {
+        "explanation": "Destructive tests require a 4-step safety pattern:",
+        "steps": [
+          {
+            "step": "1. Backup (MANDATORY)",
+            "test_id": "test_backup_pvc_data",
+            "description": "Export all data that will be deleted",
+            "verification": "Verify backup file exists and contains data"
+          },
+          {
+            "step": "2. Delete (DESTRUCTIVE)",
+            "test_id": "test_delete_pvc",
+            "description": "Permanently delete the PVC and its data",
+            "cannot_undo": true
+          },
+          {
+            "step": "3. Restore",
+            "test_id": "test_restore_pvc_data",
+            "description": "Recreate PVC and restore data from backup"
+          },
+          {
+            "step": "4. Verify",
+            "test_id": "test_verify_pvc_restored",
+            "description": "Confirm data was restored correctly"
+          }
+        ]
+      },
+      "when_to_run_destructive_tests": {
+        "appropriate": [
+          "In isolated test clusters that can be rebuilt",
+          "During disaster recovery drills (with backups)",
+          "Testing backup/restore procedures",
+          "Validating delete operations work as expected"
+        ],
+        "never": [
+          "In production clusters (even with backups)",
+          "Without completing the backup test first",
+          "If you're unsure what will be deleted",
+          "If you don't have approval from cluster owner"
+        ]
+      },
+      "common_safety_mistakes": [
+        {
+          "mistake": "Skipping the backup test to save time",
+          "consequence": "Permanent data loss with no recovery option",
+          "how_to_avoid": "ALWAYS run backup test first. It takes 2 minutes and could save hours of recovery work.",
+          "real_story": "An engineer once skipped backup before testing PVC deletion on what they thought was a test cluster. It was production. Don't be that engineer."
+        },
+        {
+          "mistake": "Not verifying the backup completed successfully",
+          "consequence": "Backup exists but is empty or corrupted, no way to restore",
+          "how_to_avoid": "After backup test, verify: 1) Backup file exists, 2) File size is reasonable (not 0 bytes), 3) Can list contents: tar -tzf backup.tar | head",
+          "pro_tip": "Some teams require two different backup methods for destructive tests"
+        }
+      ],
+      "emergency_contacts": {
+        "if_something_goes_wrong": [
+          "STOP immediately - don't make it worse",
+          "Check if backup exists and is valid",
+          "Run restore test if backup is good",
+          "Contact cluster admin if restore fails",
+          "Document what happened for incident review"
+        ]
+      }
+    }
+  }
+}
+```
+
+**2. Add Safety Badges and Visual Warnings**
+
+Enhance the test metadata with visual safety cues:
+
+```json
+{
+  "metadata": {
+    "safety_badges": {
+      "read-only": {
+        "icon": "👁️",
+        "color": "green",
+        "message": "Safe - Read-Only",
+        "confidence_level": "Run freely, experiment safely"
+      },
+      "modifies-state": {
+        "icon": "✏️",
+        "color": "yellow",
+        "message": "Caution - Modifies System",
+        "confidence_level": "Run carefully, cleanup required"
+      },
+      "destructive": {
+        "icon": "🚨",
+        "color": "red",
+        "message": "DANGER - Destructive",
+        "confidence_level": "Backup required, expert supervision recommended"
+      }
+    }
+  }
+}
+```
+
+**3. Create Safety-Focused Learning Objectives**
+
+Add specific learning objectives about safe test execution:
+
+```json
+{
+  "learning": {
+    "objectives": [
+      "Understand the difference between read-only and state-modifying tests",
+      "Learn the backup-modify-cleanup-verify pattern for safe testing",
+      "Practice verifying cluster context before running modifying tests",
+      "Build confidence identifying risky operations in test commands",
+      "Master the cleanup process to restore system state"
+    ],
+    "safety_skills_gained": [
+      "Identify whether a test command modifies state by analyzing the operations",
+      "Verify you're in the correct cluster before running tests",
+      "Execute backup/cleanup patterns to ensure safe test execution",
+      "Recognize when a test requires expert review or approval"
+    ]
+  }
+}
+```
+
+**4. Add Cleanup Test Education**
+
+For every cleanup test, explain its purpose and importance:
+
+```json
+{
+  "test_cleanup_servicemonitor": {
+    "learning": {
+      "cleanup_education": {
+        "what_this_test_does": "Removes all resources created by test_create_servicemonitor, returning the system to its original state",
+        "why_cleanup_matters": {
+          "resource_waste": "Unused resources consume cluster capacity (CPU, memory, storage)",
+          "test_interference": "Leftover test resources can cause future tests to fail or produce unexpected results",
+          "confusion": "Makes it hard to distinguish between 'real' production resources and abandoned test artifacts",
+          "cost": "In cloud environments, unused resources cost money"
+        },
+        "when_to_run_cleanup": [
+          "Immediately after completing the main test (preferred)",
+          "At the end of your testing session",
+          "Before running the same test again (to ensure clean slate)",
+          "If a test fails midway and leaves partial resources"
+        ],
+        "how_to_verify_cleanup_worked": [
+          {
+            "check": "Resource is gone",
+            "command": "oc get servicemonitor test-monitor -n test-namespace",
+            "expected": "Error from server (NotFound): servicemonitors.monitoring.coreos.com \"test-monitor\" not found",
+            "meaning": "Success - resource was deleted"
+          },
+          {
+            "check": "Namespace is clean",
+            "command": "oc get all -n test-namespace",
+            "expected": "No resources found in test-namespace namespace",
+            "meaning": "All test resources removed"
+          }
+        ],
+        "common_cleanup_mistakes": [
+          {
+            "mistake": "Assuming cleanup happened automatically",
+            "reality": "Resources persist until explicitly deleted",
+            "how_to_avoid": "Always verify cleanup worked by checking for the resource after deletion"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+**5. Add Pre-Flight Safety Checklist**
+
+For modifying and destructive tests, add a pre-execution safety checklist:
+
+```json
+{
+  "test_execution": {
+    "safety_checklist": {
+      "title": "⚠️ Pre-Flight Safety Check",
+      "description": "Complete this checklist BEFORE running this test",
+      "required_checks": [
+        {
+          "check": "Verify cluster context",
+          "command": "oc config current-context",
+          "requirement": "Must NOT be a production cluster",
+          "how_to_verify": "Context name should contain 'test', 'dev', or 'sandbox'",
+          "if_wrong": "Switch context with: oc login <test-cluster-url>"
+        },
+        {
+          "check": "Confirm backup completed (destructive tests only)",
+          "command": "ls -lh backup/",
+          "requirement": "Backup file must exist and have non-zero size",
+          "how_to_verify": "See a recent .tar or .yaml file with size > 0",
+          "if_missing": "Run backup test first: test_backup_pvc_data"
+        },
+        {
+          "check": "Verify test namespace exists",
+          "command": "oc get namespace test-namespace",
+          "requirement": "Namespace must exist",
+          "how_to_verify": "Command succeeds without error",
+          "if_missing": "Create namespace: oc create namespace test-namespace"
+        },
+        {
+          "check": "Check RBAC permissions",
+          "command": "oc auth can-i create servicemonitor -n test-namespace",
+          "requirement": "Must return 'yes'",
+          "how_to_verify": "Output is exactly: yes",
+          "if_no": "Request permissions from cluster admin"
+        }
+      ],
+      "all_checks_passed": "✅ All safety checks passed - you may proceed with the test",
+      "if_any_failed": "❌ Do NOT proceed until all checks pass. Fix the failures first."
+    }
+  }
+}
+```
+
+#### Safety Education Quality Checklist
+
+Before finalizing enhanced test plan:
+
+- [ ] Every test has safety_overview explaining its impact type
+- [ ] Modifying tests explain what resources they create/change
+- [ ] Destructive tests have clear warnings and backup requirements
+- [ ] Cleanup tests explain why they matter and how to verify success
+- [ ] Pre-flight safety checklists added for risky tests
+- [ ] Common safety mistakes documented with real consequences
+- [ ] Backup/restore pattern explained step-by-step
+- [ ] Visual safety badges/icons used for quick recognition
+- [ ] "When to run" and "when NOT to run" guidance provided
+- [ ] Emergency recovery steps included for destructive tests
+
+#### Example: Complete Safety Education for a Modifying Test
+
+```json
+{
+  "test_create_servicemonitor": {
+    "metadata": {
+      "title": "Create ServiceMonitor for metrics collection",
+      "system_impact": {
+        "type": "modifies-state",
+        "description": "Creates a ServiceMonitor custom resource in test-namespace",
+        "affected_resources": ["ServiceMonitor: test-monitor in test-namespace"],
+        "reversible": true,
+        "persistence": "permanent",
+        "risk_level": "medium"
+      },
+      "state_management": {
+        "requires_backup": false,
+        "requires_cleanup": true,
+        "cleanup_test": "test_cleanup_servicemonitor"
+      },
+      "safety": {
+        "can_run_in_production": false,
+        "requires_confirmation": true,
+        "warning_message": "⚠️ This test creates a ServiceMonitor resource that will persist until cleanup. Run test_cleanup_servicemonitor when done.",
+        "safe_to_retry": true,
+        "idempotent": true
+      }
+    },
+    "learning": {
+      "safety_overview": {
+        "impact_type": "modifies-state",
+        "what_it_means": "This test creates a resource that persists after completion",
+        "affected_resources_explained": "We create ServiceMonitor 'test-monitor' in test-namespace to demonstrate Prometheus configuration",
+        "cleanup_required": "Yes - run test_cleanup_servicemonitor after completing this test",
+        "why_cleanup_matters": "Prevents resource waste and test interference"
+      },
+      "safety_skills_gained": [
+        "Identify state-modifying commands (oc create, apply, patch)",
+        "Verify cluster context before modifying resources",
+        "Execute cleanup tests to restore original state"
+      ]
+    },
+    "test_execution": {
+      "safety_checklist": {
+        "required_checks": [
+          {
+            "check": "Verify not in production",
+            "command": "oc config current-context | grep -v prod",
+            "requirement": "Must NOT contain 'prod'"
+          }
+        ]
+      },
+      "steps": [
+        {
+          "step_number": 1,
+          "title": "Verify current cluster context (safety check)",
+          "learning_note": "ALWAYS verify you're in the right cluster before modifying resources. This prevents accidental changes to production.",
+          "command": "oc config current-context",
+          "expected_output": "Contains 'test', 'dev', or 'sandbox' - NOT 'prod'",
+          "why_this_step": "Safety first! Verifying context prevents accidentally creating test resources in production clusters.",
+          "common_errors": [
+            {
+              "error": "Context shows 'production-cluster'",
+              "solution": "STOP. Switch to test cluster: oc login <test-cluster-url>",
+              "learning_point": "Production clusters should never have test resources. Always double-check context."
+            }
+          ]
+        },
+        {
+          "step_number": 2,
+          "title": "Create ServiceMonitor resource",
+          "learning_note": "This command creates a new Kubernetes resource that will persist. Remember to run cleanup later!",
+          "command": "oc apply -f servicemonitor.yaml",
+          "expected_output": "servicemonitor.monitoring.coreos.com/test-monitor created"
+        }
+      ]
+    },
+    "next_steps": {
+      "on_success": "✅ Test complete! Next: Run test_cleanup_servicemonitor to remove test resources and restore the cluster.",
+      "cleanup_reminder": {
+        "message": "Don't forget cleanup!",
+        "test_to_run": "test_cleanup_servicemonitor",
+        "why": "Removes the ServiceMonitor we created, preventing resource waste"
+      }
+    }
+  }
+}
+```
+
 ## Output Format
 
 Enhanced test plan with educational content:

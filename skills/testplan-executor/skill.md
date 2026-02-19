@@ -229,7 +229,247 @@ Ready to execute: YES
 ═══════════════════════════════════════════════════════════════
 ```
 
-### Phase 2: Systematic Test Execution (variable time)
+**Safety and Impact Assessment:**
+
+```bash
+# Analyze system impact for all tests
+echo "Analyzing test safety and system impact..."
+echo ""
+
+# Count tests by impact type
+read_only_count=$(jq '[.testcases[] | select(.metadata.system_impact.type == "read-only")] | length' testplan.json)
+modifies_state_count=$(jq '[.testcases[] | select(.metadata.system_impact.type == "modifies-state")] | length' testplan.json)
+destructive_count=$(jq '[.testcases[] | select(.metadata.system_impact.type == "destructive")] | length' testplan.json)
+
+echo "System Impact Summary:"
+echo "  👁️ Read-Only Tests: $read_only_count (safe, no state changes)"
+echo "  ✏️ Modifies-State Tests: $modifies_state_count (requires cleanup)"
+echo "  🚨 Destructive Tests: $destructive_count (requires backup + cleanup)"
+echo ""
+
+# Check for production environment
+current_context=$(oc config current-context)
+if echo "$current_context" | grep -qi "prod\|production"; then
+  echo "⚠️ WARNING: Current cluster context appears to be PRODUCTION: $current_context"
+  echo ""
+  echo "The following tests are NOT safe for production:"
+  jq -r '.testcases[] | select(.metadata.safety.can_run_in_production == false) | "  - \(.metadata.id): \(.metadata.title)"' testplan.json
+  echo ""
+  read -p "Are you ABSOLUTELY SURE you want to continue in production? (type 'yes' to confirm): " prod_confirm
+  if [ "$prod_confirm" != "yes" ]; then
+    echo "❌ Execution cancelled for safety. Please switch to a test cluster."
+    exit 1
+  fi
+  echo "⚠️ Production execution confirmed. Proceeding with extreme caution..."
+else
+  echo "✓ Non-production cluster detected: $current_context"
+fi
+echo ""
+
+# Verify backup tests exist for destructive tests
+echo "Verifying backup/cleanup pattern compliance..."
+backup_issues=0
+
+jq -c '.testcases[] | select(.metadata.system_impact.type == "destructive" or .metadata.system_impact.type == "modifies-state")' testplan.json | while read test; do
+  test_id=$(echo "$test" | jq -r '.metadata.id')
+  requires_backup=$(echo "$test" | jq -r '.metadata.state_management.requires_backup')
+  backup_test=$(echo "$test" | jq -r '.metadata.state_management.backup_test')
+  requires_cleanup=$(echo "$test" | jq -r '.metadata.state_management.requires_cleanup')
+  cleanup_test=$(echo "$test" | jq -r '.metadata.state_management.cleanup_test')
+
+  if [ "$requires_backup" = "true" ] && [ -z "$backup_test" ]; then
+    echo "❌ $test_id requires backup but no backup_test specified"
+    backup_issues=$((backup_issues + 1))
+  fi
+
+  if [ "$requires_cleanup" = "true" ] && [ -z "$cleanup_test" ]; then
+    echo "❌ $test_id requires cleanup but no cleanup_test specified"
+    backup_issues=$((backup_issues + 1))
+  fi
+
+  if [ -n "$backup_test" ]; then
+    if ! jq -e ".testcases.$backup_test" testplan.json > /dev/null; then
+      echo "❌ $test_id references non-existent backup test: $backup_test"
+      backup_issues=$((backup_issues + 1))
+    else
+      echo "✓ $test_id has valid backup test: $backup_test"
+    fi
+  fi
+
+  if [ -n "$cleanup_test" ]; then
+    if ! jq -e ".testcases.$cleanup_test" testplan.json > /dev/null; then
+      echo "❌ $test_id references non-existent cleanup test: $cleanup_test"
+      backup_issues=$((backup_issues + 1))
+    else
+      echo "✓ $test_id has valid cleanup test: $cleanup_test"
+    fi
+  fi
+done
+
+if [ $backup_issues -gt 0 ]; then
+  echo ""
+  echo "❌ Found $backup_issues backup/cleanup configuration issues"
+  echo "   Tests may not be safe to execute without proper state management"
+  read -p "Continue anyway? (yes/no): " continue_unsafe
+  if [ "$continue_unsafe" != "yes" ]; then
+    echo "Execution cancelled. Please fix backup/cleanup configuration first."
+    exit 1
+  fi
+else
+  echo "✓ All backup/cleanup patterns verified"
+fi
+echo ""
+```
+
+### Phase 2: Systematic Test Execution with Safety Enforcement (variable time)
+
+**CRITICAL: Pre-Test Safety Checks**
+
+Before executing EACH test, perform mandatory safety validation:
+
+```bash
+# For each test in execution sequence
+test_id="test_1"
+
+# Extract safety metadata
+impact_type=$(jq -r ".testcases.$test_id.metadata.system_impact.type" testplan.json)
+risk_level=$(jq -r ".testcases.$test_id.metadata.system_impact.risk_level" testplan.json)
+requires_backup=$(jq -r ".testcases.$test_id.metadata.state_management.requires_backup" testplan.json)
+backup_test=$(jq -r ".testcases.$test_id.metadata.state_management.backup_test" testplan.json)
+requires_cleanup=$(jq -r ".testcases.$test_id.metadata.state_management.requires_cleanup" testplan.json)
+cleanup_test=$(jq -r ".testcases.$test_id.metadata.state_management.cleanup_test" testplan.json)
+requires_confirmation=$(jq -r ".testcases.$test_id.metadata.safety.requires_confirmation" testplan.json)
+warning_message=$(jq -r ".testcases.$test_id.metadata.safety.warning_message" testplan.json)
+can_run_in_prod=$(jq -r ".testcases.$test_id.metadata.safety.can_run_in_production" testplan.json)
+
+echo "═══════════════════════════════════════════════════════════════"
+echo "PRE-EXECUTION SAFETY CHECK: $test_id"
+echo "═══════════════════════════════════════════════════════════════"
+echo "System Impact: $impact_type"
+echo "Risk Level: $risk_level"
+echo ""
+
+# Safety Check 1: Production environment validation
+if [ "$can_run_in_prod" = "false" ]; then
+  if echo "$current_context" | grep -qi "prod\|production"; then
+    echo "❌ BLOCKED: This test cannot run in production environments"
+    echo "   Current context: $current_context"
+    echo "   Test ID: $test_id"
+    echo ""
+    echo "Please switch to a non-production cluster:"
+    echo "  oc login <test-cluster-url>"
+    echo ""
+    read -p "Skip this test? (yes/no): " skip_test
+    if [ "$skip_test" = "yes" ]; then
+      echo "Test skipped due to production safety block"
+      continue
+    else
+      echo "❌ Execution aborted for safety"
+      exit 1
+    fi
+  fi
+fi
+
+# Safety Check 2: Backup requirement validation
+if [ "$requires_backup" = "true" ]; then
+  echo "⚠️ BACKUP REQUIRED before running this test"
+  echo "   Backup test: $backup_test"
+  echo ""
+
+  # Check if backup test has been executed
+  if [ -f "results/$backup_test.status" ]; then
+    backup_status=$(cat "results/$backup_test.status")
+    if [ "$backup_status" = "passed" ]; then
+      echo "✓ Backup test completed successfully"
+    else
+      echo "❌ Backup test did not pass (status: $backup_status)"
+      echo "   Cannot proceed with destructive test without successful backup"
+      echo ""
+      read -p "Run backup test now? (yes/no): " run_backup
+      if [ "$run_backup" = "yes" ]; then
+        echo "Executing backup test: $backup_test"
+        # Execute backup test here...
+        # (logic similar to main test execution)
+      else
+        echo "❌ Test skipped - backup requirement not met"
+        continue
+      fi
+    fi
+  else
+    echo "❌ Backup test has not been executed: $backup_test"
+    echo "   Destructive tests require backup to be completed first"
+    echo ""
+    read -p "Run backup test now? (yes/no): " run_backup
+    if [ "$run_backup" = "yes" ]; then
+      echo "Executing backup test: $backup_test"
+      # Execute backup test here...
+    else
+      echo "❌ Test skipped - backup requirement not met"
+      continue
+    fi
+  fi
+  echo ""
+fi
+
+# Safety Check 3: User confirmation for risky tests
+if [ "$requires_confirmation" = "true" ]; then
+  echo "⚠️ CONFIRMATION REQUIRED"
+  echo ""
+  if [ -n "$warning_message" ] && [ "$warning_message" != "null" ]; then
+    echo "$warning_message"
+    echo ""
+  fi
+
+  if [ "$impact_type" = "modifies-state" ]; then
+    echo "This test will modify system state:"
+    jq -r ".testcases.$test_id.metadata.system_impact.affected_resources[]" testplan.json | while read resource; do
+      echo "  - $resource"
+    done
+    echo ""
+    if [ "$requires_cleanup" = "true" ]; then
+      echo "Cleanup test will be available: $cleanup_test"
+    fi
+  elif [ "$impact_type" = "destructive" ]; then
+    echo "⚠️ DESTRUCTIVE TEST - This will PERMANENTLY modify or delete:"
+    jq -r ".testcases.$test_id.metadata.system_impact.affected_resources[]" testplan.json | while read resource; do
+      echo "  - $resource"
+    done
+    echo ""
+    echo "Backup test completed: $backup_test ✓"
+    echo "Restore test available: $cleanup_test"
+    echo ""
+    echo "This action CANNOT be undone except by running the restore test."
+  fi
+
+  echo ""
+  read -p "Do you want to proceed with this test? (yes/no): " user_confirm
+  if [ "$user_confirm" != "yes" ]; then
+    echo "Test execution cancelled by user"
+    continue
+  fi
+  echo "User confirmation received. Proceeding..."
+  echo ""
+fi
+
+# Safety Check 4: Command intrusiveness analysis
+echo "Analyzing test commands for intrusiveness..."
+jq -r ".testcases.$test_id.test_execution.steps[].command" testplan.json | while read cmd; do
+  # Check for destructive operations
+  if echo "$cmd" | grep -qE "delete|drain|evict|purge|--force"; then
+    echo "⚠️ Destructive operation detected: $cmd"
+  elif echo "$cmd" | grep -qE "apply|create|patch|scale|set"; then
+    echo "⚠️ Modifying operation detected: $cmd"
+  fi
+done
+echo ""
+
+# Record safety validation passed
+echo "passed" > "results/$test_id-safety-check.status"
+echo "✅ Safety checks passed. Test execution approved."
+echo ""
+```
+
+**For each test:
 
 **For each test:**
 
@@ -329,6 +569,47 @@ test_duration=$((test_end - test_start))
 
 echo ""
 echo "Test completed in $((test_duration / 60)) minutes"
+
+# Post-Execution State Management
+if [ "$requires_cleanup" = "true" ]; then
+  echo ""
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "⚠️ CLEANUP REQUIRED"
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "This test modified system state and requires cleanup to restore"
+  echo "the system to its original condition."
+  echo ""
+  echo "Cleanup test: $cleanup_test"
+  echo ""
+  echo "Affected resources:"
+  jq -r ".testcases.$test_id.metadata.system_impact.affected_resources[]" testplan.json | while read resource; do
+    echo "  - $resource"
+  done
+  echo ""
+  read -p "Run cleanup test now? (yes/no/later): " cleanup_choice
+
+  case "$cleanup_choice" in
+    yes)
+      echo "Executing cleanup test: $cleanup_test"
+      # Execute cleanup test immediately
+      # (call cleanup test execution logic here)
+      echo "Cleanup test completed"
+      ;;
+    later)
+      echo "⚠️ REMINDER: You must run cleanup test later: $cleanup_test"
+      echo "   Command: ./execute-testplan --tests $cleanup_test"
+      # Track cleanup needed
+      echo "$test_id|$cleanup_test" >> "results/cleanup-needed.txt"
+      ;;
+    *)
+      echo "❌ WARNING: System state was modified but cleanup declined"
+      echo "   Resources will remain in modified state until cleanup is run"
+      echo "   Cleanup test: $cleanup_test"
+      echo "$test_id|$cleanup_test|URGENT" >> "results/cleanup-needed.txt"
+      ;;
+  esac
+  echo ""
+fi
 ```
 
 ### Phase 3: Result Validation (5-10 minutes per test)
